@@ -1,0 +1,1769 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<title>안산대학교 물리치료학과 메타버스 — 게임판 (100% 오프라인)</title>
+<style>
+  :root{
+    --navy-900:#07132e; --navy-800:#0b224e; --navy-700:#123063; --navy-600:#1b3d7a; --navy-500:#264c8f;
+    --gold:#d4af52; --gold-hi:#f0d488; --gold-lo:#a9812c; --gold-line:rgba(212,175,82,.42);
+    --cream:#f4ead0; --text:#eaf1ff; --muted:#a6b6d6;
+    --accent:#d4af52; --accent2:#8fb0e8; --ok:#5fd39a; --bad:#f0857f;
+    --panel:rgba(9,22,50,.90); --line:rgba(212,175,82,.30); --bg:#07132e;
+    --ser:'Nanum Myeongjo','Batang',Georgia,'Times New Roman',serif;
+    --san:'Pretendard','Malgun Gothic','Segoe UI',sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden;background:#04091a;font-family:var(--san);color:var(--text)}
+  #game{position:fixed;inset:0}
+  canvas{display:block;image-rendering:auto}
+
+  /* HUD */
+  #hud{position:absolute;top:14px;left:14px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;pointer-events:none;max-width:62vw;z-index:10}
+  #brandbadge{display:flex;align-items:center;gap:10px;background:linear-gradient(135deg,rgba(11,34,78,.94),rgba(7,19,46,.94));
+    border:1px solid var(--gold-line);border-radius:14px;padding:7px 14px 7px 8px;box-shadow:0 8px 26px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.05)}
+  #brandbadge .bb-seal{width:40px;height:40px;flex:0 0 auto;filter:drop-shadow(0 2px 4px rgba(0,0,0,.4))}
+  #brandbadge .bb-seal svg{width:100%;height:100%;display:block}
+  #brandbadge .bb-txt{display:flex;flex-direction:column;line-height:1.15}
+  #brandbadge .bb-txt b{font-family:var(--ser);font-size:14px;color:var(--cream);letter-spacing:.2px}
+  #brandbadge .bb-txt span{font-size:10.5px;color:var(--gold);letter-spacing:2px;font-weight:700}
+  .chip{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:8px 13px;font-size:13px;
+    box-shadow:0 6px 20px rgba(0,0,0,.5);backdrop-filter:blur(7px)}
+  .chip b{color:var(--gold-hi)}
+  .chip .lab{color:var(--muted);font-size:10.5px;display:block;margin-bottom:2px;letter-spacing:.3px}
+  #quest{border-left:3px solid var(--gold)}
+  #clock b{color:var(--accent2)}
+
+  #topright{position:absolute;top:14px;right:14px;display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;max-width:36vw;z-index:11}
+  .btn{pointer-events:auto;background:linear-gradient(135deg,rgba(11,34,78,.92),rgba(7,19,46,.92));
+    border:1px solid var(--line);color:var(--text);border-radius:11px;padding:9px 13px;font-size:13px;cursor:pointer;transition:.16s;font-family:var(--san)}
+  .btn:hover{border-color:var(--gold);color:#fff;box-shadow:0 0 0 1px var(--gold-line),0 6px 18px rgba(0,0,0,.4)}
+  @keyframes mapPulse{0%,100%{box-shadow:0 0 0 0 rgba(240,212,136,0),0 3px 10px rgba(0,0,0,.35)}50%{box-shadow:0 0 0 3px rgba(240,212,136,.5),0 0 22px rgba(240,212,136,.7)}}
+  #mapBtn:not(.on){border-color:var(--gold)!important;color:#fff!important;background:linear-gradient(135deg,#1d4f90,#0b2456)!important;font-weight:700;animation:mapPulse 1.7s ease-in-out infinite}
+  #mapBtn:not(.on):hover{transform:translateY(-1px) scale(1.05);animation:none;box-shadow:0 0 0 3px var(--gold),0 0 24px rgba(240,212,136,.8)}
+  .btn.on{border-color:var(--gold);box-shadow:0 0 0 1px var(--gold) inset,0 0 16px rgba(212,175,82,.35);color:var(--gold-hi)}
+
+  #prompt{position:absolute;left:50%;bottom:104px;transform:translateX(-50%);z-index:10;
+    background:linear-gradient(135deg,rgba(11,34,78,.96),rgba(7,19,46,.96));border:1px solid var(--gold);border-radius:14px;
+    padding:10px 18px;font-size:14px;box-shadow:0 10px 30px rgba(0,0,0,.6),0 0 22px rgba(212,175,82,.18);display:none;align-items:center;gap:9px}
+  .kbd{display:inline-block;min-width:24px;text-align:center;background:#0a1a3a;border:1px solid var(--gold-line);
+    border-radius:7px;padding:2px 8px;font-size:12px;color:var(--gold-hi);font-weight:800}
+
+  #controls{position:absolute;left:14px;bottom:14px;z-index:10;background:var(--panel);border:1px solid var(--line);
+    border-radius:11px;padding:9px 13px;font-size:12px;color:var(--muted);backdrop-filter:blur(6px)}
+  #controls b{color:var(--cream)}
+
+  #toast{position:absolute;left:50%;top:72px;transform:translateX(-50%);z-index:20;display:flex;flex-direction:column;gap:6px;align-items:center;pointer-events:none}
+  .toast{background:linear-gradient(135deg,rgba(11,34,78,.96),rgba(7,19,46,.96));border:1px solid var(--gold);border-radius:11px;
+    padding:9px 18px;font-size:13px;box-shadow:0 8px 24px rgba(0,0,0,.6);animation:tin .3s ease;color:var(--cream)}
+  @keyframes tin{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
+
+  /* Modals */
+  .overlay{position:absolute;inset:0;z-index:30;background:radial-gradient(1200px 800px at 50% 0%,rgba(18,48,99,.5),rgba(4,9,26,.86));
+    backdrop-filter:blur(5px);display:none;align-items:center;justify-content:center;padding:20px}
+  .overlay.show{display:flex}
+  .modal{width:min(560px,94vw);max-height:92vh;overflow:auto;background:linear-gradient(180deg,#0e2350,#081a3d);
+    border:1px solid var(--gold-line);border-radius:20px;box-shadow:0 30px 80px rgba(0,0,0,.72),inset 0 1px 0 rgba(255,255,255,.06)}
+  .modal::-webkit-scrollbar{width:9px}.modal::-webkit-scrollbar-thumb{background:rgba(212,175,82,.3);border-radius:9px}
+  .modal .head{padding:17px 22px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:13px}
+  .avatar-badge{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:23px;flex:0 0 auto;
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
+  .modal .head h2{font-size:18px;font-family:var(--ser);color:var(--cream);letter-spacing:.2px}
+  .modal .head .sub{font-size:12px;color:var(--muted);margin-top:3px}
+  .modal .body{padding:20px 22px}
+  .modal .foot{padding:15px 22px;border-top:1px solid var(--line);display:flex;gap:9px;justify-content:flex-end;flex-wrap:wrap}
+  .x{margin-left:auto;background:none;border:none;color:var(--muted);font-size:23px;cursor:pointer;line-height:1}
+  .x:hover{color:var(--gold-hi)}
+
+  .say{font-size:14.5px;line-height:1.65;color:#dde7fb;background:rgba(6,16,38,.6);border:1px solid var(--line);
+    border-radius:13px;padding:14px 16px;margin-bottom:13px;white-space:pre-wrap}
+  .say .who{color:var(--gold-hi);font-weight:700;font-size:12px;display:block;margin-bottom:5px;font-family:var(--ser)}
+
+  .opt{width:100%;text-align:left;background:rgba(6,16,38,.6);border:1px solid var(--line);color:var(--text);border-radius:13px;
+    padding:13px 15px;font-size:14px;cursor:pointer;margin-bottom:9px;transition:.15s;display:flex;gap:11px;align-items:center;font-family:var(--san)}
+  .opt:hover:not(:disabled){border-color:var(--gold);background:rgba(27,61,122,.4)}
+  .opt .num{width:23px;height:23px;border-radius:7px;background:#0a1a3a;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:var(--gold-hi);flex:0 0 auto;border:1px solid var(--gold-line)}
+  .opt:disabled{cursor:default;opacity:.96}
+  .opt.correct{border-color:var(--ok);background:rgba(95,211,154,.14)}
+  .opt.wrong{border-color:var(--bad);background:rgba(240,133,127,.14)}
+  .opt.correct .num{background:var(--ok);color:#04220f}
+  .opt.wrong .num{background:var(--bad);color:#3a0a0a}
+
+  .expl{font-size:13.5px;line-height:1.62;color:#d3ddf3;background:rgba(4,11,28,.65);border:1px dashed var(--gold-line);
+    border-radius:13px;padding:13px 15px;margin-top:6px}
+  .expl .tag{display:inline-block;font-size:11px;font-weight:800;color:#0a1220;background:var(--gold);border-radius:6px;padding:1px 7px;margin-right:7px}
+  .qmeta{font-size:12px;color:var(--muted);margin-bottom:10px;display:flex;justify-content:space-between}
+  .field{margin-bottom:13px}
+  .field label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
+  .field input{width:100%;background:rgba(6,16,38,.7);border:1px solid var(--line);border-radius:11px;padding:11px 13px;color:var(--text);font-size:14px;font-family:var(--san)}
+  .field input:focus{outline:none;border-color:var(--gold)}
+  .status-dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#5a6b8c;margin-right:7px}
+  .status-dot.ok{background:var(--ok);box-shadow:0 0 8px var(--ok)}.status-dot.bad{background:var(--bad)}
+  .hint{font-size:12px;color:var(--muted);line-height:1.6;margin-top:6px}
+
+  .primary{background:linear-gradient(135deg,var(--gold-hi),var(--gold),var(--gold-lo));color:#0a1a34;border:none;font-weight:800;
+    box-shadow:0 8px 22px rgba(212,175,82,.32)}
+  .primary:hover{filter:brightness(1.06);color:#0a1a34}
+
+  /* Intro premium */
+  #intro .modal{width:min(720px,96vw);padding:0}
+  #intro .modal{background:
+     radial-gradient(900px 380px at 50% -8%,rgba(212,175,82,.14),transparent 60%),
+     linear-gradient(180deg,#0f2a5c 0%,#081a3d 62%,#0a1e46 100%)}
+  .intro-hero{display:flex;align-items:center;gap:22px;padding:30px 30px 14px}
+  .seal{width:132px;height:132px;flex:0 0 auto;filter:drop-shadow(0 8px 20px rgba(0,0,0,.5))}
+  .seal svg{width:100%;height:100%;display:block}
+  .brand-title .eyebrow{font-size:10.5px;letter-spacing:2.4px;color:var(--gold);font-weight:700;margin-bottom:8px}
+  .brand-title h1{font-family:var(--ser);font-size:31px;line-height:1.18;color:var(--cream);font-weight:800;letter-spacing:.3px}
+  .brand-title h1 .gold{background:linear-gradient(90deg,var(--gold-hi),var(--gold));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .brand-title .sub{font-size:13px;color:var(--muted);margin-top:9px;line-height:1.5}
+  .banner-strip{padding:2px 26px 4px}
+  .banner-strip svg{width:100%;height:auto;display:block;border-radius:12px;box-shadow:0 10px 26px rgba(0,0,0,.4)}
+  .divider{height:1px;background:linear-gradient(90deg,transparent,var(--gold-line),transparent);margin:14px 26px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:11px;margin:6px 0 14px}
+  .card{background:rgba(6,16,38,.55);border:1px solid var(--line);border-radius:13px;padding:13px 15px}
+  .card h4{font-size:13px;color:var(--gold-hi);margin-bottom:6px;display:flex;gap:6px;align-items:center;font-family:var(--ser)}
+  .card p{font-size:12.5px;color:var(--muted);line-height:1.55}
+  .lede{font-size:14.5px;line-height:1.7;color:#dde7fb}
+  .faculty{margin:16px 0 6px;background:rgba(6,16,38,.5);border:1px solid var(--line);border-radius:14px;padding:14px 16px}
+  .fac-title{font-family:var(--ser);font-size:14px;color:var(--cream);margin-bottom:11px;display:flex;align-items:baseline;gap:8px}
+  .fac-title span{font-size:11px;color:var(--gold);letter-spacing:.5px}
+  .fac-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .fac{display:flex;align-items:center;gap:9px;font-size:12.5px;color:#dbe6ff;background:rgba(11,34,78,.5);border:1px solid var(--line);border-radius:10px;padding:8px 11px}
+  .fac .dot{width:9px;height:9px;border-radius:3px;flex:0 0 auto;box-shadow:0 0 0 1px rgba(255,255,255,.15)}
+  .fac b{font-family:var(--ser);color:var(--cream);font-weight:700}
+  .fac i{font-style:normal;color:var(--muted);margin-left:auto;font-size:11.5px}
+  .tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
+  .t{font-size:10.5px;background:rgba(11,34,78,.6);border:1px solid var(--gold-line);border-radius:20px;padding:3px 10px;color:var(--cream)}
+  .note{font-size:11.5px;color:#8ea0c4;line-height:1.6;border-top:1px solid var(--line);margin-top:14px;padding-top:12px}
+  .fac-sub{font-size:11.5px;color:var(--gold);letter-spacing:.6px;margin:13px 0 7px;font-weight:700;font-family:var(--ser)}
+  .fac.sm{padding:6px 9px}
+  .fac.sm b{font-size:11.5px}
+  .fac.sm i{font-size:10.5px}
+  #ollamaBtn{display:none!important}
+  .gb-bar{height:9px;background:rgba(255,255,255,.12);border-radius:6px;overflow:hidden;margin-bottom:11px}
+  .gb-fill{height:100%;width:100%;background:linear-gradient(90deg,#f0d488,#c8506a)}
+  .joblink{display:flex;align-items:center;justify-content:space-between;gap:8px;text-decoration:none;background:rgba(6,16,38,.6);border:1px solid var(--line);border-radius:12px;padding:12px 15px;margin-bottom:9px;color:#dde7fb;font-size:14px;font-family:var(--san);transition:.15s}
+  .joblink:hover{border-color:var(--gold);background:rgba(27,61,122,.4);color:#fff}
+  .joblink span{color:var(--gold);font-size:12px}
+  .joblink.hl{border-color:var(--gold);background:linear-gradient(135deg,rgba(212,175,82,.18),rgba(27,61,122,.35));color:var(--cream);font-weight:700}
+  .gold{color:var(--gold-hi)}
+
+  /* ---- touch controls / mobile ---- */
+  #touchpad{position:absolute;left:20px;bottom:24px;width:120px;height:120px;border-radius:50%;
+    background:radial-gradient(circle,rgba(11,34,78,.55),rgba(7,19,46,.30));border:1px solid var(--gold-line);
+    display:none;z-index:16;touch-action:none;-webkit-user-select:none;user-select:none;box-shadow:0 6px 20px rgba(0,0,0,.4)}
+  #touchknob{position:absolute;left:50%;top:50%;width:54px;height:54px;margin:-27px 0 0 -27px;border-radius:50%;
+    background:linear-gradient(135deg,var(--gold-hi),var(--gold));box-shadow:0 4px 14px rgba(0,0,0,.5)}
+  #btnE{position:absolute;right:22px;bottom:30px;width:92px;height:92px;border-radius:50%;display:none;z-index:16;
+    background:linear-gradient(135deg,var(--gold-hi),var(--gold),var(--gold-lo));color:#0a1a34;font-family:var(--ser);
+    font-weight:800;font-size:14px;line-height:1.2;border:none;box-shadow:0 6px 20px rgba(212,175,82,.42);
+    touch-action:none;-webkit-user-select:none;user-select:none}
+  #btnE:active{filter:brightness(1.1);transform:scale(.95)}
+  body.touch.playing #touchpad, body.touch.playing #btnE{display:block}
+  body.touch.playing #controls{display:none}
+  #game{touch-action:none}
+  body{-webkit-tap-highlight-color:transparent;-webkit-touch-callout:none}
+  @media (max-width:860px){
+    #hud{top:8px;left:8px;gap:6px}
+    #brandbadge{padding:5px 9px 5px 6px}
+    #brandbadge .bb-seal{width:30px;height:30px}
+    #brandbadge .bb-txt b{font-size:11px}
+    #brandbadge .bb-txt span{font-size:8px;letter-spacing:1px}
+    .chip{padding:5px 9px;font-size:10.5px}
+    .chip .lab{font-size:8.5px;margin-bottom:1px}
+    #topright{top:8px;right:8px;gap:5px}
+    #topright .btn{padding:6px 8px;font-size:11px}
+    #prompt{bottom:130px;font-size:12.5px;padding:8px 13px}
+    .modal .head{padding:13px 15px}.modal .head h2{font-size:16px}
+    .modal .body{padding:15px 16px}.modal .foot{padding:12px 15px}
+    .intro-hero{gap:14px;padding:18px 16px 8px}.seal{width:88px;height:88px}
+    .brand-title h1{font-size:21px}.brand-title .eyebrow{font-size:9px;letter-spacing:1.4px}
+    .grid2{grid-template-columns:1fr}.fac-grid{grid-template-columns:1fr}
+    .opt{padding:14px 14px;font-size:15px}
+  }
+
+  @media (max-width:860px){
+    #topright{flex-wrap:wrap;justify-content:flex-end;max-width:52vw}
+    #hud{max-width:46vw}
+    #topright .btn{padding:5px 7px;font-size:10.5px}
+  }
+  @media (max-width:560px){
+    #brandbadge .bb-txt{display:none}
+    #clock{display:none}
+    #quest{display:none}
+    .chip{padding:4px 8px;font-size:10px}
+    #topright .btn{padding:5px 6px;font-size:10px}
+    #touchpad{width:104px;height:104px;left:14px;bottom:18px}
+    #touchknob{width:46px;height:46px;margin:-23px 0 0 -23px}
+    #btnE{width:78px;height:78px;right:16px;bottom:22px;font-size:12px}
+    .modal .head h2{font-size:15px}
+    .say{font-size:13.5px}
+    .joblink{font-size:13px;padding:11px 13px}
+  }
+</style>
+</head>
+<body>
+<div id="game">
+  <canvas id="cv"></canvas>
+
+  <div id="hud">
+    <div id="brandbadge"><span class="bb-seal"><svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 120 120" role="img" aria-label="AU 배지">
+<defs><path id="au-b" d="M60,60 m-40,0 a40,40 0 1,1 80,0 a40,40 0 1,1 -80,0"/></defs>
+<circle cx="60" cy="60" r="58" fill="#0e2a5e" stroke="#c9a24b" stroke-width="3"/>
+<circle cx="60" cy="60" r="49" fill="none" stroke="#ffffff" stroke-width="1" opacity=".85"/>
+<text fill="#dfe8ff" font-family="Georgia,serif" font-size="7" font-weight="600" letter-spacing=".6"><textPath xlink:href="#au-b" startOffset="0">ANSAN&#160;UNIVERSITY&#160;&#183;&#160;PHYSICAL&#160;THERAPY&#160;&#183;&#160;</textPath></text>
+<text x="60" y="66" font-size="33" font-weight="900" text-anchor="middle" fill="#ffffff" font-family="Georgia,serif" letter-spacing="1">AU</text>
+<text x="60" y="80" font-size="7" text-anchor="middle" fill="#eeca7c" font-family="Georgia,serif" font-style="italic">Since 1981</text>
+<text x="60" y="97" font-size="8.5" text-anchor="middle" fill="#dfe8ff" font-weight="700" font-family="Georgia,serif" letter-spacing="3">AUPT</text>
+</svg></span><div class="bb-txt"><b>안산대학교 물리치료학과</b><span>AI 메타버스</span></div></div>
+    <div class="chip" id="quest"><span class="lab">🎯 현재 목표</span><span id="quest-txt">캠퍼스를 돌아다니며 교수님과 대화해보세요</span></div>
+    <div class="chip"><span class="lab">📊 학점(점수)</span><b id="score">0</b> 점 · 정답 <span id="correct">0</span></div>
+    <div class="chip"><span class="lab">🏛️ 이수 강의관</span><b id="visited">0</b> / 9</div>
+    <div class="chip"><span class="lab">🪙 코인</span><b id="coins">0</b> 개</div>
+    <div class="chip" id="clock"><span class="lab">🕘 캠퍼스 시각</span><b id="clock-txt">09:00</b> <span id="period" style="color:var(--muted)"></span></div>
+  </div>
+
+  <div id="topright">
+    <button class="btn" id="spectateBtn" title="관전 모드: 카메라가 자율 AI들을 순회합니다">👁️ 관전</button>
+    <button class="btn" id="fastBtn" title="시간 배속">⏩ 1×</button>
+    <button class="btn" id="ollamaBtn" title="Ollama 로컬 LLM 연결">🧠 AI 엔진</button>
+    <button class="btn" id="mapBtn" title="캠퍼스 한눈에 보기">🗺️ 전체보기 ✨</button>
+    <button class="btn" id="deptBtn" title="안산대 물리치료학과 안내·홍보">🏫 학과</button>
+    <button class="btn" id="achBtn">🏆 도전과제</button>
+    <button class="btn" id="helpBtn">❔ 도움말</button>
+  </div>
+
+  <div id="prompt"></div>
+
+  <div id="controls">
+    <b>이동</b> WASD / 방향키 · <b>상호작용</b> <span style="color:var(--gold)">E</span> · <b>대화 종료</b> Esc · 🪙코인 · 🔔골든벨
+  </div>
+
+  <div id="touchpad"><div id="touchknob"></div></div>
+  <button id="btnE" aria-label="상호작용">E<br>상호작용</button>
+  <div id="toast"></div>
+</div>
+
+<!-- Intro -->
+<div class="overlay show" id="intro">
+  <div class="modal">
+    <div class="intro-hero">
+      <div class="seal"><svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 240 240" role="img" aria-label="안산대학교 물리치료학과 엠블럼">
+<defs>
+<linearGradient id="au-gold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f0d488"/><stop offset=".5" stop-color="#d4af52"/><stop offset="1" stop-color="#a9812c"/></linearGradient>
+<radialGradient id="au-navy" cx=".5" cy=".38" r=".7"><stop offset="0" stop-color="#173a72"/><stop offset="1" stop-color="#0b224e"/></radialGradient>
+<path id="au-ring" d="M120,120 m-98,0 a98,98 0 1,1 196,0 a98,98 0 1,1 -196,0"/>
+</defs>
+<circle cx="120" cy="120" r="117" fill="url(#au-gold)"/>
+<circle cx="120" cy="120" r="112" fill="url(#au-navy)"/>
+<circle cx="120" cy="120" r="86" fill="#f6f2e7"/>
+<circle cx="120" cy="120" r="86" fill="none" stroke="#c9a24b" stroke-width="2.5"/>
+<circle cx="120" cy="120" r="108" fill="none" stroke="#c9a24b" stroke-width="1"/>
+<text fill="#f4ead0" font-family="Georgia,'Times New Roman',serif" font-size="12.4" font-weight="700" letter-spacing="1.6"><textPath xlink:href="#au-ring" startOffset="1%">ANSAN&#160;UNIVERSITY&#160;&#183;&#160;DEPARTMENT&#160;OF&#160;PHYSICAL&#160;THERAPY&#160;&#183;&#160;</textPath></text>
+<g fill="none" stroke="url(#au-gold)" stroke-width="4.4" stroke-linecap="round">
+<line x1="120" y1="70" x2="120" y2="156"/>
+<path d="M120,86 C103,96 103,109 120,119 C137,129 137,142 120,152"/>
+<path d="M120,86 C137,96 137,109 120,119 C103,129 103,142 120,152"/>
+</g>
+<circle cx="120" cy="69" r="6.2" fill="url(#au-gold)"/>
+<path d="M120,63 C107,55 92,58 86,70 C100,65 112,66 120,74 C128,66 140,65 154,70 C148,58 133,55 120,63Z" fill="url(#au-gold)"/>
+<g fill="#0e2a5e">
+<circle cx="90" cy="88" r="9.5"/><circle cx="150" cy="88" r="9.5"/>
+<path d="M90,99 C71,107 67,131 82,144 C86,123 92,114 106,110 C99,106 94,103 90,99Z"/>
+<path d="M150,99 C169,107 173,131 158,144 C154,123 148,114 134,110 C141,106 146,103 150,99Z"/>
+</g>
+<g fill="#0e2a5e">
+<path d="M98,150 C84,150 73,159 73,172 C89,179 107,178 120,169 C113,158 106,150 98,150Z"/>
+<path d="M142,150 C156,150 167,159 167,172 C151,179 133,178 120,169 C127,158 134,150 142,150Z"/>
+</g>
+<rect x="82" y="176" width="76" height="19" rx="9.5" fill="#0e2a5e" stroke="#c9a24b" stroke-width="1.5"/>
+<text x="120" y="189.5" fill="#eecb7f" font-family="Georgia,serif" font-size="11.5" font-weight="700" text-anchor="middle" letter-spacing="1">Since 1982</text>
+</svg></div>
+      <div class="brand-title">
+        <div class="eyebrow">ANSAN UNIVERSITY · DEPT. OF PHYSICAL THERAPY · SINCE 1982</div>
+        <h1>안산대학교 물리치료학과<br><span class="gold">메타버스 게임판</span></h1>
+        <div class="sub">스스로 살아 움직이는 NPC 교수·학생과 함께하는 교육용 가상 캠퍼스 · 100% 오프라인(로컬 AI 불필요)</div>
+      </div>
+    </div>
+    <div class="banner-strip"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 250" role="img" aria-label="제51회 물리치료사 국가고시 전국 수석 배출">
+<defs><linearGradient id="bn" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#153b74"/><stop offset="1" stop-color="#0a1f47"/></linearGradient>
+<linearGradient id="bg2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f2d888"/><stop offset="1" stop-color="#c69a3a"/></linearGradient></defs>
+<rect x="5" y="5" width="990" height="240" rx="16" fill="url(#bn)"/>
+<rect x="16" y="16" width="968" height="218" rx="10" fill="none" stroke="url(#bg2)" stroke-width="2.5"/>
+<g fill="none" stroke="url(#bg2)" stroke-width="2" opacity=".8">
+<path d="M60,140 q26,-34 66,-30 M70,168 q22,-30 58,-30 M84,190 q20,-24 50,-26"/>
+<path d="M940,140 q-26,-34 -66,-30 M930,168 q-22,-30 -58,-30 M916,190 q-20,-24 -50,-26"/></g>
+<text x="100" y="158" font-size="52" font-weight="800" text-anchor="middle" fill="url(#bg2)" font-family="'Nanum Myeongjo','Batang','Malgun Gothic',serif">경</text>
+<text x="900" y="158" font-size="52" font-weight="800" text-anchor="middle" fill="url(#bg2)" font-family="'Nanum Myeongjo','Batang','Malgun Gothic',serif">축</text>
+<circle cx="500" cy="50" r="19" fill="url(#bg2)"/><text x="500" y="57" font-size="18" text-anchor="middle" fill="#0a1f47" font-weight="800" font-family="'Nanum Myeongjo','Batang','Malgun Gothic',serif">축</text>
+<path d="M470,44 l-20,-8 l6,14z M530,44 l20,-8 l-6,14z" fill="url(#bg2)"/>
+<text x="500" y="125" font-size="43" font-weight="800" text-anchor="middle" fill="#f4ead0" font-family="'Nanum Myeongjo','Batang','Malgun Gothic',serif">제51회 물리치료사 국가고시</text>
+<text x="500" y="180" font-size="56" font-weight="900" text-anchor="middle" fill="url(#bg2)" font-family="'Nanum Myeongjo','Batang','Malgun Gothic',serif">전국 수석 배출</text>
+<text x="500" y="216" font-size="22" font-weight="700" text-anchor="middle" fill="#eecb7f" font-family="'Nanum Myeongjo','Batang','Malgun Gothic',serif" letter-spacing="8">축 하 합 니 다</text>
+</svg></div>
+    <div class="body">
+      <div class="grid2">
+        <div class="card"><h4>🧠 Generative Agents (Smallville)</h4><p>스탠퍼드·구글의 유명 연구. AI 캐릭터가 <b>스스로 돌아다니고 대화하며 하루 일과</b>를 보내는 자율 시뮬레이션 — 이 캠퍼스 AI들의 방식입니다.</p></div>
+        <div class="card"><h4>🗺️ Gather Town</h4><p>2D 픽셀 공간을 아바타로 걸어다니며 만나 대화하는 메타버스 — 이 캠퍼스의 <b>조작·근접 상호작용</b>입니다.</p></div>
+      </div>
+      <p class="lede">신입생 아바타로 캠퍼스를 <b>직접 걸어다니며</b> 9개 교과관에서 교수 AI에게 <b>강의를 듣고 국시 기출 퀴즈</b>(총 150문항·매 방문 무작위 6문항)를 풀어 학점을 쌓으세요. 가만히 두면 AI 교수·학생이 <b>스스로 등교·수업·잡담</b>합니다.</p>
+      <div class="faculty">
+        <div class="fac-title">참여 교수진 <span>· 안산대학교 물리치료학과</span></div>
+        <div class="fac-sub">전임교수 · 강의관 상주</div>
+        <div class="fac-grid">
+          <div class="fac"><span class="dot" style="background:#3d9a70"></span><b>김도현</b> 학과장<i>기능해부·신경계운동치료</i></div>
+          <div class="fac"><span class="dot" style="background:#5b6ee0"></span><b>정형국</b> 교수<i>신경해부학·임상운동학</i></div>
+          <div class="fac"><span class="dot" style="background:#d08a2e"></span><b>정호발</b> 교수<i>정형·근골격계물리치료</i></div>
+          <div class="fac"><span class="dot" style="background:#7a8aa0"></span><b>이광재</b> 교수<i>임상의사결정</i></div>
+          <div class="fac"><span class="dot" style="background:#b0413e"></span><b>김신영</b> 교수<i>해부학및실습·운동생리학</i></div>
+          <div class="fac"><span class="dot" style="background:#3a72c4"></span><b>김동훈</b> 교수<i>물리적인자치료</i></div>
+          <div class="fac"><span class="dot" style="background:#7b57c9"></span><b>심경섭</b> 교수<i>신경계·심화호흡물리치료</i></div>
+        </div>
+        <div class="fac-sub">특임 · 겸임교수</div>
+        <div class="fac-grid">
+          <div class="fac sm"><span class="dot" style="background:#8aa0c8"></span><b>신호진</b> 특임<i>인체생리학·운동치료학</i></div>
+          <div class="fac sm"><span class="dot" style="background:#8aa0c8"></span><b>윤정호</b> 겸임<i>순환호흡계·심화심장</i></div>
+          <div class="fac sm"><span class="dot" style="background:#8aa0c8"></span><b>김은지</b> 겸임<i>의학용어·스포츠물리치료</i></div>
+          <div class="fac sm"><span class="dot" style="background:#8aa0c8"></span><b>김동규</b> 겸임<i>정형물리치료·운동치료학</i></div>
+          <div class="fac sm"><span class="dot" style="background:#8aa0c8"></span><b>정지운</b> 겸임<i>소아물리치료·아동발달</i></div>
+          <div class="fac sm"><span class="dot" style="background:#8aa0c8"></span><b>손지원</b> 겸임<i>측정평가및실습·건강과운동</i></div>
+          <div class="fac sm"><span class="dot" style="background:#8aa0c8"></span><b>정영준</b> 겸임<i>근육학·촉진학</i></div>
+          <div class="fac sm"><span class="dot" style="background:#8aa0c8"></span><b>김동현</b> 겸임<i>일상생활동작·임상운동실습</i></div>
+          <div class="fac sm"><span class="dot" style="background:#8aa0c8"></span><b>안종찬</b> 겸임<i>근거중심근골격계·임상진단학</i></div>
+          <div class="fac sm"><span class="dot" style="background:#8aa0c8"></span><b>이유빈</b> 겸임<i>의지보조기학·공중보건학</i></div>
+          <div class="fac sm"><span class="dot" style="background:#8aa0c8"></span><b>황원정</b> 겸임<i>물리치료진단학·진단실습</i></div>
+          <div class="fac sm"><span class="dot" style="background:#8aa0c8"></span><b>이구형</b> 겸임<i>물리학·피부계물리치료학</i></div>
+        </div>
+      </div>
+    </div>
+    <div class="foot">
+      <button class="btn primary" id="startBtn">▶ 캠퍼스 입장</button>
+    </div>
+  </div>
+</div>
+
+<!-- Dialog / Quiz -->
+<div class="overlay" id="dlg">
+  <div class="modal">
+    <div class="head" id="dlg-head">
+      <div class="avatar-badge" id="dlg-badge">🧑‍🏫</div>
+      <div><h2 id="dlg-name">교수</h2><div class="sub" id="dlg-sub">교과</div></div>
+      <button class="x" onclick="closeDialog()">×</button>
+    </div>
+    <div class="body" id="dlg-body"></div>
+    <div class="foot" id="dlg-foot"></div>
+  </div>
+</div>
+
+<!-- Ollama settings -->
+<div class="overlay" id="ollama">
+  <div class="modal">
+    <div class="head">
+      <div class="avatar-badge" style="background:linear-gradient(135deg,#7c9cff,#b892ff)">🧠</div>
+      <div><h2>AI 엔진 설정 (Ollama / LM Studio)</h2><div class="sub">로컬 LLM에 연결하면 NPC가 진짜로 생각하고 대화합니다</div></div>
+      <button class="x" onclick="closeOllama()">×</button>
+    </div>
+    <div class="body">
+      <div class="field"><label>서버 주소</label><input id="ol-url" value="http://127.0.0.1:11434" /></div>
+      <div class="field"><label>모델 이름 (예: gemma3, llama3.1, qwen2.5)</label><input id="ol-model" value="gemma3" /></div>
+      <div id="ol-status" class="hint"><span class="status-dot" id="ol-dot"></span><span id="ol-msg">연결 안 됨 — 오프라인 내장 AI로 동작 중</span></div>
+      <p class="hint">💡 Ollama가 브라우저(file://)에서 차단되면 서버 실행 시 환경변수 <b>OLLAMA_ORIGINS=*</b> 를 설정하세요. 연결이 안 돼도 캠퍼스는 오프라인 AI로 완전히 동작합니다.</p>
+    </div>
+    <div class="foot">
+      <button class="btn" onclick="closeOllama()">닫기</button>
+      <button class="btn" id="ol-test">🔌 연결 테스트</button>
+      <button class="btn primary" id="ol-save">저장 &amp; 활성화</button>
+    </div>
+  </div>
+</div>
+
+<!-- Help -->
+<div class="overlay" id="help">
+  <div class="modal">
+    <div class="head"><div class="avatar-badge" style="background:linear-gradient(135deg,#ffd166,#f0955b)">❔</div>
+      <div><h2>도움말 &amp; 조작법</h2><div class="sub">캠퍼스 이용 안내</div></div>
+      <button class="x" onclick="hideEl('help')">×</button></div>
+    <div class="body">
+      <div class="say"><span class="who">🎮 조작</span><b>WASD</b> 또는 <b>방향키</b>로 아바타 이동 · 사람/문 앞에서 <b>E</b> 로 대화·강의 · <b>Esc</b> 로 닫기</div>
+      <div class="say"><span class="who">🏛️ 강의관 (8곳) · 담당 교수</span>해부학관(김신영) · 신경해부학관(정형국) · 신경계물리치료관(심경섭) · 운동치료관(이광재) · 근골격계물리치료관(정호발) · 물리적인자치료관(김동훈) · 심화호흡물리치료관(심경섭) · 기능해부·신경운동관(김도현 학과장). 문 앞이나 교수 AI에게 <b>E</b> → 강의 요약 / 퀴즈.</div>
+      <div class="say"><span class="who">👁️ 관전 모드</span>켜면 카메라가 자율 AI들을 따라다닙니다. 캠퍼스 시각(수업/쉬는시간)에 따라 AI 학생·교수가 스스로 등교·수업·잡담합니다. <b>⏩</b> 로 시간을 배속하세요.</div>
+      <div class="say"><span class="who">💾 완전 오프라인 게임판</span>이 버전은 로컬 AI가 필요 없습니다. 모든 NPC(학생·교수·냥이)는 내장 프로그램으로 자율 이동·대화·수업합니다. 인터넷·설치 없이 파일만 열면 바로 실행됩니다.</div>
+      <div class="say"><span class="who">🎮 재미 요소</span>🪙 <b>코인</b>을 주워 모으고, 🐈 <b>캠퍼스 냥이</b>를 쓰다듬고, ☕ <b>물치 카페</b>에서 스피드 부스트를 받으세요. 🔔 <b>골든벨 퀴즈 러시</b>(축제 무대, E)로 콤보 보너스를 노리고 🏆 <b>도전과제</b>를 달성하세요. AI 학생들은 스스로 모여 <b>수다</b>를 떱니다.</div>
+      <div class="say"><span class="who">🏫 캠퍼스 시설</span><b>학과사무실</b>(조교 정성예·김희연) 행정 문의 · <b>전공동아리방</b>에서 AXIS·CNS·SPT·SS·RE:V·약손·HAPT 7개 동아리 소개 · <b>물치 학회실</b> 학생회 활동 · <b>대학일자리플러스센터</b>에서 진로·취업·직무와 심경섭 교수 「자기를 이해하기」. 문 앞에서 <b>E</b>.</div>
+    </div>
+    <div class="foot"><button class="btn primary" onclick="hideEl('help')">확인</button></div>
+  </div>
+</div>
+
+<!-- Achievements -->
+<div class="overlay" id="ach">
+  <div class="modal">
+    <div class="head"><div class="avatar-badge" style="background:linear-gradient(135deg,#f0d488,#c8506a)">🏆</div>
+      <div><h2>도전과제</h2><div class="sub">캠퍼스 라이프 업적</div></div>
+      <button class="x" onclick="hideEl('ach')">×</button></div>
+    <div class="body" id="ach-body"></div>
+    <div class="foot"><button class="btn primary" onclick="hideEl('ach')">확인</button></div>
+  </div>
+</div>
+
+<script>
+/* ==========================================================================
+   안산대학교 물리치료학과 AI 메타버스
+   - Generative Agents(Smallville)식 자율 NPC + Gather Town식 조작/근접상호작용
+   - 100% 오프라인 동작, Ollama 연결 시 실제 LLM 대화로 승격
+   ========================================================================== */
+'use strict';
+
+/* ---------- Canvas ---------- */
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+let VW = 0, VH = 0, DPR = Math.min(window.devicePixelRatio || 1, 2);
+function resize(){
+  VW = window.innerWidth; VH = window.innerHeight;
+  cv.width = Math.floor(VW*DPR); cv.height = Math.floor(VH*DPR);
+  cv.style.width = VW+'px'; cv.style.height = VH+'px';
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+}
+window.addEventListener('resize', resize); resize();
+
+/* ---------- World ---------- */
+const WORLD = { w: 2000, h: 1240 };
+
+/* Buildings: academic halls (each maps to a subject) + a social hub */
+const BUILDINGS = [{"id": "anatomy", "name": "해부학관", "subj": "anatomy", "emoji": "🦴", "x": 80, "y": 70, "w": 260, "h": 155, "color": "#b0413e", "roof": "#7d2a28"}, {"id": "neuroanat", "name": "신경해부학관", "subj": "neuroanat", "emoji": "🧠", "x": 470, "y": 70, "w": 260, "h": 155, "color": "#5b6ee0", "roof": "#3a49a8"}, {"id": "neuro", "name": "신경계물리치료관", "subj": "neuro", "emoji": "🩺", "x": 860, "y": 70, "w": 260, "h": 155, "color": "#7b57c9", "roof": "#553a8f"}, {"id": "exercise", "name": "운동치료관", "subj": "exercise", "emoji": "🏋️", "x": 1250, "y": 70, "w": 260, "h": 155, "color": "#2f9e8f", "roof": "#1f6e63"}, {"id": "funcanat", "name": "기능해부·신경운동관", "subj": "funcanat", "emoji": "🚶", "x": 1640, "y": 70, "w": 260, "h": 155, "color": "#3d9a70", "roof": "#276b4c"}, {"id": "msk", "name": "근골격계물리치료관", "subj": "msk", "emoji": "🦵", "x": 80, "y": 470, "w": 260, "h": 155, "color": "#d08a2e", "roof": "#996216"}, {"id": "modality", "name": "물리적인자치료관", "subj": "modality", "emoji": "⚡", "x": 470, "y": 470, "w": 260, "h": 155, "color": "#3a72c4", "roof": "#274f8c"}, {"id": "cardio", "name": "심화호흡물리치료관", "subj": "cardio", "emoji": "🫁", "x": 860, "y": 470, "w": 260, "h": 155, "color": "#c8506a", "roof": "#8f2f47"}, {"id": "clindx", "name": "임상의사결정관", "subj": "clindx", "emoji": "🔎", "x": 1250, "y": 470, "w": 260, "h": 155, "color": "#2c8f9c", "roof": "#1c6470"}, {"id": "office", "name": "학과사무실", "subj": null, "role": "office", "emoji": "🏢", "x": 1640, "y": 470, "w": 260, "h": 155, "color": "#5b6472", "roof": "#3a414c"}, {"id": "hub", "name": "학생회관·도서관", "subj": null, "role": "hub", "emoji": "📚", "x": 80, "y": 870, "w": 260, "h": 155, "color": "#4a8f5a", "roof": "#316b3f"}, {"id": "club", "name": "전공동아리방", "subj": null, "role": "club", "emoji": "🎽", "x": 470, "y": 870, "w": 260, "h": 155, "color": "#c98b3a", "roof": "#8a642a"}, {"id": "career", "name": "대학일자리플러스센터", "subj": null, "role": "career", "emoji": "💼", "x": 1250, "y": 870, "w": 260, "h": 155, "color": "#2f7fb0", "roof": "#1f4f80"}, {"id": "council", "name": "물치 학회실", "subj": null, "role": "council", "emoji": "📣", "x": 1640, "y": 870, "w": 260, "h": 155, "color": "#3c8f7a", "roof": "#276b5a"}];
+function building(id){ return BUILDINGS.find(b=>b.id===id); }
+/* door (interaction point) = bottom-center, just outside */
+function doorOf(b){ return { x: b.x + b.w/2, y: b.y + b.h + 26 }; }
+
+/* Path/waypoint network for wandering (kept on open ground between buildings) */
+const WP = [{"x": 210, "y": 350}, {"x": 410, "y": 350}, {"x": 600, "y": 350}, {"x": 800, "y": 350}, {"x": 990, "y": 350}, {"x": 1180, "y": 350}, {"x": 1380, "y": 350}, {"x": 1580, "y": 350}, {"x": 1770, "y": 350}, {"x": 210, "y": 750}, {"x": 410, "y": 750}, {"x": 600, "y": 750}, {"x": 800, "y": 750}, {"x": 990, "y": 750}, {"x": 1180, "y": 750}, {"x": 1380, "y": 750}, {"x": 1580, "y": 750}, {"x": 1770, "y": 750}, {"x": 1000, "y": 350}, {"x": 920, "y": 370}, {"x": 1080, "y": 370}];
+const HAVENUES = [350,750];
+const VAVENUES = [210,600,990,1380,1770];
+const PLAZA = {"x": 1000, "y": 350};
+
+/* ---------- Quiz banks (물리치료 표준 교과 지식 [사실]) ---------- */
+const QUIZ = {"anatomy": [{"q": "회전근개(rotator cuff)를 구성하는 근육(SITS)이 아닌 것은?", "o": ["극상근", "극하근", "삼각근", "견갑하근"], "a": 2, "e": "회전근개는 극상근(Supraspinatus)·극하근(Infraspinatus)·소원근(Teres minor)·견갑하근(Subscapularis)의 SITS. 삼각근은 별개의 표층 근육이다."}, {"q": "대퇴사두근(quadriceps femoris)에 포함되지 않는 근육은?", "o": ["대퇴직근", "외측광근", "봉공근", "중간광근"], "a": 2, "e": "대퇴사두근 = 대퇴직근 + 외측광근 + 내측광근 + 중간광근. 봉공근(Sartorius)은 별개의 이관절 근육이다."}, {"q": "팔꿈치를 굽히면서 전완을 뒤침(회외)시키는 주된 근육은?", "o": ["상완삼두근", "상완이두근", "원회내근", "완요골근"], "a": 1, "e": "상완이두근(biceps brachii)은 팔꿈치 굴곡과 전완 회외(supination)의 주동근이다."}, {"q": "어깨의 관절와상완관절(glenohumeral joint)의 형태학적 분류는?", "o": ["경첩관절", "평면관절", "절구관절(구상관절)", "안장관절"], "a": 2, "e": "절구관절(ball-and-socket)로 3축·다방향 운동이 가능해 인체에서 가동성이 가장 큰 관절이다."}, {"q": "아킬레스건(종골건)을 형성하는 하퇴삼두근에 해당하는 것은?", "o": ["비복근·가자미근", "전경골근", "장비골근", "후경골근"], "a": 0, "e": "비복근(gastrocnemius)과 가자미근(soleus)이 하퇴삼두근을 이루어 아킬레스건으로 종골에 부착, 발목 저측굴곡을 담당한다."}], "neuroanat": [{"q": "신경능선(neural crest)에서 유래하지 않는 것은?", "o": ["뒤뿌리신경절 감각신경세포", "슈반세포", "부신속질", "앞뿔 운동신경세포"], "a": 3, "e": "신경능선 유래: 감각신경절세포·슈반세포·부신속질·자율신경절 등. 앞뿔 운동신경세포는 신경관(바닥판)에서 유래한다."}, {"q": "성인에서 척수원뿔(conus medullaris)이 끝나는 위치는?", "o": ["T12", "L1–L2", "L3–L4", "S1"], "a": 1, "e": "성인 척수는 L1–L2 높이에서 척수원뿔로 끝나고 그 아래는 말총(cauda equina). 요추천자를 L3 이하에서 하는 이유다."}, {"q": "중추신경계(CNS)에서 말이집(myelin)을 형성하는 세포는?", "o": ["슈반세포", "별아교세포", "희소돌기아교세포", "미세아교세포"], "a": 2, "e": "CNS 말이집=희소돌기아교세포(oligodendrocyte). 말초신경계(PNS)에서는 슈반세포가 담당한다."}, {"q": "말이집신경에서 도약전도(saltatory conduction)가 일어나는 지점은?", "o": ["축삭둔덕", "랑비에결절", "연접틈새", "세포체"], "a": 1, "e": "활동전위가 말이집 사이의 랑비에결절에서만 재생성되어 뛰듯 전도 → 전도속도가 빨라진다."}, {"q": "중간대뇌동맥(MCA) 영역 뇌졸중의 전형적 증상은?", "o": ["반대쪽 다리 우세 위약", "반대쪽 얼굴·팔 우세 위약, 우세반구면 실어증", "동측반맹만", "순수 감각소실만"], "a": 1, "e": "MCA는 가쪽면(얼굴·팔 영역)과 언어영역을 공급 → 반대쪽 얼굴·팔 우세 위약, 우세반구 침범 시 실어증. 다리 우세 위약은 ACA."}, {"q": "겉질(UMN) 병변에서 나타나는 얼굴마비의 특징은?", "o": ["같은쪽 얼굴 전체", "반대쪽 아래얼굴만(이마 보존)", "양쪽 얼굴 전체", "반대쪽 얼굴 전체"], "a": 1, "e": "이마(위얼굴)는 양쪽 겉질의 지배를 받으므로 UMN 병변에서는 반대쪽 아래얼굴만 마비, 이마·눈감기는 보존. LMN(벨마비)은 같은쪽 얼굴 전체."}, {"q": "다음 중 소뇌 손상의 징후가 아닌 것은?", "o": ["운동거리이상(dysmetria)", "의도떨림(intention tremor)", "안진(nystagmus)", "근위축(atrophy)"], "a": 3, "e": "소뇌 손상은 협응·균형 장애(운동실조·의도떨림·안진·조음장애)를 일으키나 근력·감각은 보존되고 근위축은 없다."}, {"q": "파킨슨병의 일차 병리로 옳은 것은?", "o": ["꼬리핵 위축", "흑색질촘촘부(SNc)의 도파민세포 사멸", "시상밑핵 원발 과활성", "창백핵 종양"], "a": 1, "e": "흑색질촘촘부(SNc) 도파민 신경세포 사멸 → 줄무늬체 도파민 소실 → 바닥핵 운동회로 이상(서동·경직·안정시진전)."}, {"q": "교감신경섬유가 척수에서 나오는 부위는?", "o": ["머리엉치(craniosacral)", "가슴허리(thoracolumbar, T1–L2)", "엉치(S2–4)만", "뇌신경만"], "a": 1, "e": "교감신경=가슴허리(T1–L2) 분출, 부교감신경=머리엉치(뇌신경 III·VII·IX·X 및 S2–4)."}, {"q": "관문조절설(gate control theory)에서 통증의 ‘관문을 닫는’ 섬유는?", "o": ["Aδ 섬유", "C 섬유", "Aβ(굵은 촉각) 섬유", "교감섬유"], "a": 2, "e": "굵은 Aβ(촉각) 섬유가 등쪽뿔의 억제 사이신경을 활성화해 가는 통증섬유(Aδ·C) 전달을 차단(관문 닫힘). TENS의 진통 원리."}, {"q": "후각신경(뇌신경 Ⅰ)이 두개바닥을 통과하는 구조는?", "o": ["벌집뼈 체판", "시각신경관", "위눈확틈새", "타원구멍", "목정맥구멍"], "a": 0, "e": "후각신경은 벌집뼈(사골)의 체판을 통과해 후각망울로 이어진다."}, {"q": "대뇌의 일차운동영역이 위치하는 이랑은?", "o": ["중심뒤이랑", "중심앞이랑", "위관자이랑", "모이랑", "혀이랑"], "a": 1, "e": "일차운동겉질은 이마엽의 중심앞이랑, 일차몸감각겉질은 마루엽의 중심뒤이랑에 있다."}, {"q": "일차몸감각영역이 위치하는 이랑은?", "o": ["중심앞이랑", "중심뒤이랑", "아래이마이랑", "뒤통수이랑", "섬이랑"], "a": 1, "e": "일차몸감각겉질은 마루엽의 중심뒤이랑에 위치한다."}, {"q": "시상·가쪽뇌실 주위에서 고리모양을 이루며 기억과 감정에 관여하는 계통은?", "o": ["소뇌", "뇌줄기", "사이뇌", "바닥핵", "둘레계통"], "a": 4, "e": "둘레계통(해마·편도체·띠이랑 등)은 기억·감정·동기에 관여한다."}, {"q": "척수 분절 내에서 교차(가로지름)가 일어나는 상행 신경로는?", "o": ["적색척수로", "뒤척수소뇌로", "가쪽척수시상로", "가쪽겉질척수로", "뒤기둥-안쪽섬유띠로"], "a": 2, "e": "척수시상로는 들어온 분절 부근의 앞백색교련에서 교차한다. 겉질척수로·뒤기둥은 숨뇌에서 교차."}, {"q": "수의운동을 담당하며 숨뇌 피라미드에서 대부분 교차하는 하행로는?", "o": ["가쪽겉질척수로", "가쪽척수시상로", "뒤기둥-안쪽섬유띠로", "적색척수로", "앞척수소뇌로"], "a": 0, "e": "가쪽겉질척수로는 숨뇌 피라미드에서 교차(추체교차)한 뒤 하행한다."}, {"q": "고유감각·진동감각·정교한 촉각을 전달하는 상행로는?", "o": ["가쪽척수시상로", "앞척수시상로", "뒤기둥-안쪽섬유띠로", "척수소뇌로", "적색척수로"], "a": 2, "e": "뒤기둥-안쪽섬유띠로가 고유·진동·정교한 촉각을 전달하며 숨뇌에서 교차한다."}, {"q": "뇌줄기(중간뇌·다리뇌·숨뇌)에 속하지 않는 것은?", "o": ["중간뇌", "다리뇌", "숨뇌", "소뇌", "그물체"], "a": 3, "e": "뇌줄기는 중간뇌·다리뇌·숨뇌로 구성된다. 소뇌는 뇌줄기 뒤쪽의 별개 구조다."}, {"q": "소뇌의 주된 기능으로 옳은 것은?", "o": ["말(언어) 산출", "수의운동 명령의 개시", "운동 협응·균형·근긴장 조절", "통각의 인식", "호르몬 분비"], "a": 2, "e": "소뇌는 운동 협응·균형·근긴장을 조절한다. 손상 시 실조·의도진전·겨냥이상."}, {"q": "바닥핵(기저핵)에 속하는 구조로 옳은 것은?", "o": ["꼬리핵과 조가비핵", "시상", "치아핵", "적색핵", "안쪽무릎체"], "a": 0, "e": "바닥핵은 줄무늬체(꼬리핵+조가비핵)와 창백핵 등으로 구성되며 운동을 조절한다."}, {"q": "좌우 대뇌반구를 연결하는 가장 큰 백질 다발은?", "o": ["뇌들보", "속섬유막", "뇌활", "앞맞교차", "투명사이막"], "a": 0, "e": "뇌들보(corpus callosum)가 좌우 반구를 잇는 가장 큰 섬유다발이다."}, {"q": "겉질척수로가 지나가며 열공경색(뇌졸중)이 잘 생기는 백질 구조는?", "o": ["속섬유막", "뇌들보", "뇌활", "솔방울샘", "맥락얼기"], "a": 0, "e": "속섬유막(무릎·뒤다리)으로 겉질척수로가 지나며 열공경색 호발 부위다."}, {"q": "뇌척수액을 주로 생산하는 구조는?", "o": ["맥락얼기", "거미막과립", "뇌실사이구멍", "시상", "솔방울샘"], "a": 0, "e": "뇌척수액은 뇌실의 맥락얼기에서 생산되고 거미막과립에서 흡수된다."}, {"q": "뇌신경과 기능의 연결이 옳은 것은?", "o": ["시신경(Ⅱ) - 후각", "얼굴신경(Ⅶ) - 씹기", "미주신경(Ⅹ) - 내장 부교감", "더부신경(Ⅺ) - 혀 운동", "갓돌림신경(Ⅵ) - 청각"], "a": 2, "e": "미주신경(Ⅹ)은 가슴·배안 내장에 부교감을 공급한다. 시각은 Ⅱ, 표정근은 Ⅶ, 혀운동은 Ⅻ."}, {"q": "팔신경얼기(brachial plexus)를 구성하는 척수신경 뿌리는?", "o": ["C1-C4", "C3-C5", "C5-T1", "L1-L4", "L4-S3"], "a": 2, "e": "팔신경얼기는 주로 C5-T1 앞가지로 구성된다."}, {"q": "대뇌동맥고리(Willis 고리)를 직접 구성하지 않는 동맥은?", "o": ["앞대뇌동맥", "앞교통동맥", "뒤교통동맥", "뒤대뇌동맥", "중간대뇌동맥"], "a": 4, "e": "Willis 고리는 앞·뒤 순환을 잇는 고리이며, 중간대뇌동맥은 고리에서 갈라지는 가지다."}, {"q": "흑질(substantia nigra)이 위치하며 도파민을 생성해 파킨슨병과 관련되는 뇌줄기 부위는?", "o": ["중간뇌", "다리뇌", "숨뇌", "소뇌", "사이뇌"], "a": 0, "e": "흑질은 중간뇌에 있으며 도파민 신경 소실이 파킨슨병을 일으킨다."}, {"q": "몸감각(고유·촉각)을 대뇌겉질로 중계하는 시상의 핵은?", "o": ["배쪽뒤가쪽핵", "가쪽무릎체", "안쪽무릎체", "앞핵", "시상베개"], "a": 0, "e": "배쪽뒤가쪽핵(VPL)은 몸감각을, 가쪽무릎체는 시각을, 안쪽무릎체는 청각을 중계한다."}, {"q": "청각 정보를 일차청각겉질로 중계하는 시상 부위는?", "o": ["가쪽무릎체", "안쪽무릎체", "배쪽뒤가쪽핵", "앞핵", "등쪽안쪽핵"], "a": 1, "e": "안쪽무릎체=청각 중계, 가쪽무릎체=시각 중계."}, {"q": "시각 정보를 일차시각겉질로 중계하는 시상 부위는?", "o": ["가쪽무릎체", "안쪽무릎체", "배쪽뒤안쪽핵", "시상베개", "앞핵"], "a": 0, "e": "가쪽무릎체가 시각을 중계한다."}, {"q": "체온·수분·배고픔 등 항상성과 자율신경·내분비를 통합 조절하는 부위는?", "o": ["시상", "시상하부", "솔방울샘", "뇌들보", "섬엽"], "a": 1, "e": "시상하부는 항상성·자율신경·내분비의 통합 조절 중추다."}, {"q": "각성·의식 유지에 관여하며 뇌줄기에 넓게 분포하는 신경망은?", "o": ["그물체(그물활성계)", "바닥핵", "소뇌핵", "맥락얼기", "둘레계통"], "a": 0, "e": "뇌줄기 그물체(그물활성계)는 각성·의식 수준 유지에 관여한다."}, {"q": "새로운 서술기억 형성에 핵심적인 둘레계통 구조는?", "o": ["해마", "편도체", "시상", "창백핵", "솔방울샘"], "a": 0, "e": "해마 손상은 새 기억 형성 장애를 일으킨다. 편도체는 공포·정서에 관여."}, {"q": "중추신경에서 말이집(수초)을 형성하는 아교세포는?", "o": ["별아교세포", "희소돌기아교세포", "미세아교세포", "슈반세포", "뇌실막세포"], "a": 1, "e": "중추는 희소돌기아교세포, 말초는 슈반세포가 말이집을 만든다."}, {"q": "말이집신경섬유에서 활동전위가 결절(랑비에)을 건너뛰며 전도되는 방식은?", "o": ["도약전도", "연속전도", "역행전도", "수동확산", "전기연접전도"], "a": 0, "e": "말이집 사이 랑비에결절에서 도약전도가 일어나 전도속도가 빠르다."}, {"q": "신경근접합부(운동종판)에서 분비되는 신경전달물질은?", "o": ["아세틸콜린", "도파민", "세로토닌", "글루탐산", "GABA"], "a": 0, "e": "신경근접합부의 전달물질은 아세틸콜린이다."}, {"q": "성인에서 척수원뿔(conus medullaris)이 정상적으로 끝나는 대략적 높이는?", "o": ["T10", "T12", "L1~L2", "L4", "S1"], "a": 2, "e": "성인 척수는 대략 L1~L2에서 끝나고 그 아래는 말총(cauda equina)이다."}, {"q": "팔로 가는 신경을 내는 척수 팽대는?", "o": ["목팽대", "허리엉치팽대", "척수원뿔", "말총", "종말끈"], "a": 0, "e": "목팽대(C4-T1)는 팔, 허리엉치팽대는 다리로 가는 신경을 낸다."}, {"q": "척수 회색질에서 운동신경세포가 위치하는 부위는?", "o": ["앞뿔", "뒤뿔", "뒤기둥", "가쪽섬유단", "앞섬유단"], "a": 0, "e": "앞뿔=운동, 뒤뿔=감각, 가쪽뿔(T1-L2)=교감."}, {"q": "교감신경세포(절전섬유)가 나오는 척수 분절은?", "o": ["뇌신경", "C1-C4", "T1-L2", "S2-S4", "전 분절"], "a": 2, "e": "교감은 흉요분절(T1-L2), 부교감은 뇌신경 Ⅲ·Ⅶ·Ⅸ·Ⅹ과 천수 S2-4에서 나온다."}, {"q": "근육의 길이(신장) 변화를 감지하는 고유수용기는?", "o": ["근방추", "골지힘줄기관", "파치니소체", "자유신경종말", "메르켈판"], "a": 0, "e": "근방추=근육 길이/신장, 골지힘줄기관=장력을 감지한다."}, {"q": "넙다리네갈래근을 지배하여 무릎 폄에 관여하는 신경은?", "o": ["궁둥신경", "넙다리신경", "폐쇄신경", "위볼기신경", "정강신경"], "a": 1, "e": "넙다리신경(L2-4)이 넙다리네갈래근을 지배해 무릎을 편다."}], "neuro": [{"q": "운동 강도 설정을 위한 목표심박수에 대한 설명으로 옳은 것은?", "o": ["최대심박수는 '200 − 나이'로 추정한다.", "최대심박수는 '220 − 나이'로 추정하며, 중강도는 그 50~70%이다.", "고강도는 최대심박수의 30~40% 범위이다.", "자율신경 이상 환자에서도 심박수가 가장 정확한 강도 지표이다.", "심박수는 운동 강도와 무관하다."], "a": 1, "e": "추정 최대심박수 = 220 − 나이. 중강도 50~70%, 고강도 70~85%. 자율신경 이상 시 심박수가 부정확하여 RPE를 병용한다."}, {"q": "뇌졸중 후 운동 재활의 근거에 대한 설명으로 가장 옳은 것은?", "o": ["보바스 접근법이 과제지향 훈련보다 상지 기능 회복에 우월하다.", "과제지향 훈련과 충분한 반복량, 치료 강도가 회복의 핵심이다.", "치료 강도는 기능 결과에 영향을 주지 않는다.", "거울치료와 CIMT는 효과가 전혀 입증되지 않았다.", "조기 재활보다 장기간 침상 안정이 우선 권장된다."], "a": 1, "e": "최신 근거(VA/DoD 2024, Dorsch 2023)는 과제지향 훈련·반복량·강도를 우선하며, 보바스는 과제지향 훈련보다 열등하다고 본다. 거울치료·CIMT는 적절 대상에서 효과가 있다."}, {"q": "파킨슨병 환자의 물리치료에 대한 설명으로 가장 옳은 것은?", "o": ["동결보행에는 외부 단서 사용을 피해야 한다.", "외부 시·청각 단서와 큰 진폭 훈련(LSVT-BIG)이 권장된다.", "약물 off 시간대에 집중적으로 고강도 훈련을 시행한다.", "자세 불안정은 약물로 잘 조절되므로 균형훈련은 불필요하다.", "작고 신중한 움직임을 반복하도록 교육한다."], "a": 1, "e": "외부 단서(바닥선·메트로놈)와 큰 진폭 훈련(LSVT-BIG)이 보행·동결보행에 강력 권고된다. 훈련은 약효가 있는 on 시간대에 시행한다."}, {"q": "소뇌 손상 환자의 재활 원칙으로 옳은 것은?", "o": ["원위부부터 훈련하여 점차 근위부 안정성을 확보한다.", "근위부 안정성을 먼저 확보한 후 원위부 협응으로 진행한다.", "시각 피드백은 협응 훈련에 방해가 되므로 배제한다.", "크고 빠른 움직임을 우선 훈련한다.", "주된 문제는 움직임의 시작 실패이다."], "a": 1, "e": "소뇌 손상은 협응·정확성·균형의 문제이므로 근위부·몸통 안정화 후 원위부 협응으로 진행하고, 시각 피드백을 활용하며 안정적·단순한 움직임을 훈련한다."}, {"q": "T6 이상 척수손상 환자에서 자율신경 반사부전(AD)이 발생했을 때 가장 우선적인 처치는?", "o": ["즉시 환자를 눕힌다.", "유발 원인(방광 팽창 등)을 찾아 제거하고 환자를 앉힌다.", "하지를 거상한다.", "혈압을 올리는 약물을 투여한다.", "운동을 지속하며 경과를 관찰한다."], "a": 1, "e": "자율신경 반사부전은 급성 고혈압 응급이다. 환자를 앉혀 기립성으로 혈압을 낮추고, 방광 팽창 등 유발 자극을 즉시 제거하며 조이는 것을 푼다. 눕히거나 하지 거상은 혈압을 더 올린다."}, {"q": "ALS 환자의 운동치료에서 가장 중요한 원칙은?", "o": ["최대 저항 운동으로 근력을 최대한 강화한다.", "이심성 수축 운동을 집중적으로 실시한다.", "저강도·비피로성 운동으로 기능을 유지하고 과부하성 약화를 피한다.", "피로가 올 때까지 반복하여 지구력을 높인다.", "운동은 금기이므로 완전히 제한한다."], "a": 2, "e": "ALS는 과부하성 약화(overwork weakness) 위험이 있어 저강도·비피로성 운동으로 기능을 유지하고 이심성·최대저항·탈진 유발 운동을 피한다."}, {"q": "다발성 경화증 환자의 운동치료 시 고려사항으로 옳은 것은?", "o": ["체온 상승은 증상에 영향을 주지 않는다.", "열 민감성(Uhthoff 현상)을 고려해 과열을 피하고 서늘한 환경에서 운동한다.", "운동은 질병 경과를 악화시키므로 금기이다.", "재발기에도 고강도 운동을 그대로 지속한다.", "피로는 무시하고 최대 강도로 훈련한다."], "a": 1, "e": "MS는 열 민감성(Uhthoff)이 있어 서늘한 환경·냉각을 활용하고, 피로 관리를 위해 중강도로 간헐적 운동을 하며 재발기에는 강도를 낮춘다. 운동 자체는 안전·유익하다(Learmonth 2023)."}, {"q": "길랭-바레 증후군(GBS)의 시기별 물리치료에 대한 설명으로 옳은 것은?", "o": ["급성기에 고강도 저항운동으로 근력을 빠르게 회복시킨다.", "급성기에는 관절가동범위·포지셔닝·호흡관리를 중심으로 한다.", "회복기에도 과사용을 유도하는 것이 바람직하다.", "자율신경 불안정은 GBS와 무관하다.", "하행성 마비가 특징이다."], "a": 1, "e": "GBS 급성기에는 관절가동범위·포지셔닝·호흡관리 위주로 접근하고 과피로·이심성 운동을 피한다. 회복기에는 점진적·비피로성 강화를 하며, 상행성 마비와 자율신경 불안정을 모니터링한다."}, {"q": "브룬스트롬 회복단계(BRS)에 대한 설명으로 옳은 것은?", "o": ["1단계에서 경직이 최고조에 이른다.", "3단계에서는 공동운동에서 완전히 벗어난 분리운동이 가능하다.", "경직은 3단계에서 최고조에 달한 후 이후 단계에서 감소한다.", "6단계에서도 경직이 뚜렷하게 남는다.", "2단계에서는 수의적 움직임이 완전히 소실된다."], "a": 2, "e": "BRS는 1단계 이완, 2단계 경직·연합반응 출현, 3단계 공동운동·경직 최고조, 4~5단계 분리운동 시작·증가, 6단계 정상 근접(경직 소실)로 진행한다."}, {"q": "의식적 고유수용성 감각과 미세 촉각, 진동감각을 전달하는 신경로는?", "o": ["척수시상로(spinothalamic tract)", "뒤백색기둥(posterior/dorsal column)", "척수소뇌로(spinocerebellar tract)", "겉질척수로(corticospinal tract)", "그물척수로(reticulospinal tract)"], "a": 1, "e": "뒤백색기둥(후주)은 의식적 고유수용성·미세촉각·진동감각을 전달한다(널판다발=하지, 쐐기다발=상지). 척수시상로는 통온각, 척수소뇌로는 무의식적 고유수용성을 전달한다."}, {"q": "중간대뇌동맥(MCA) 영역 경색에서 나타나는 반대쪽 편마비의 분포로 옳은 것은?", "o": ["다리가 팔보다 심함", "팔·얼굴이 다리보다 심함", "상·하지가 동일", "몸통만 침범", "감각만 소실"], "a": 1, "e": "MCA는 겉질의 팔·얼굴 영역을 주로 공급 → 팔·얼굴 우세 마비. 다리 우세는 앞대뇌동맥(ACA) 양상."}, {"q": "같은쪽 반맹, 시각인식불능증, 시상통증이 나타나는 손상 동맥은?", "o": ["앞대뇌동맥", "중간대뇌동맥", "뒤대뇌동맥", "앞교통동맥", "속목동맥"], "a": 2, "e": "뒤대뇌동맥(PCA)은 뒤통수엽(시각)과 시상을 공급 → 반맹·시각인식불능·시상증후군."}, {"q": "앞대뇌동맥(ACA) 경색의 전형적 마비 분포는?", "o": ["팔·얼굴 우세", "다리 우세", "얼굴만", "양측 다리", "소뇌성 실조"], "a": 1, "e": "ACA는 안쪽 겉질(다리 영역)을 공급 → 반대쪽 다리 우세 마비."}, {"q": "운동·감각·의식이 정상이고 대화도 가능하나, 칫솔·숟가락 같은 도구를 목적에 맞게 사용하지 못하고 동작 순서를 혼동한다. 무엇인가?", "o": ["구성실행증", "관념실행증", "착의실행증", "편측무시", "베르니케실어증"], "a": 1, "e": "관념실행증은 동작의 개념·순서가 무너져 도구 사용이 안 된다(운동·감각은 정상)."}, {"q": "편측무시(공간무시)가 가장 흔히 나타나는 손상 부위는?", "o": ["좌측 전두엽", "우측 두정엽", "소뇌", "뇌줄기", "척수"], "a": 1, "e": "우반구(비우세) 두정엽 손상에서 좌측 공간을 무시하는 형태가 흔하다."}, {"q": "유창하지만 이해에 장애가 있고 착어가 나타나는 실어증은?", "o": ["브로카실어증", "베르니케실어증", "전도실어증", "전실어증", "명칭실어증"], "a": 1, "e": "베르니케(감각성)는 유창하나 이해 장애·착어. 브로카(운동성)는 비유창·표현 장애."}, {"q": "좌측 편마비 환자가 팔에서 굽힘공동운동을 수의적으로 일으키나 경직이 최대이고 분리운동은 안 된다. 브룬스트롬 회복단계는?", "o": ["1단계", "2단계", "3단계", "4단계", "5단계"], "a": 2, "e": "공동운동을 수의적으로 수행 + 경직 최고조 = 3단계."}, {"q": "팔꿈치를 편 채 아래팔 엎침·뒤침이 되고 팔을 머리 위로 드는 등 공동운동에서 벗어난 분리운동이 가능한 브룬스트롬 단계는?", "o": ["2단계", "3단계", "4단계", "5단계", "6단계"], "a": 3, "e": "공동운동에서 벗어난 분리운동 출현 = 5단계. 6단계는 협응이 거의 정상."}, {"q": "밀기증후군(pusher syndrome) 환자에 대한 물리치료 원리로 옳은 것은?", "o": ["마비측으로 더 기울이도록 유도", "시각 수직단서를 이용해 정중선으로 정렬하고 비마비측으로 체중이동 재교육", "마비측 팔로 미는 힘을 강화", "눈을 감고 균형 유지", "완전 침상안정"], "a": 1, "e": "밀기증후군은 거울·시각 수직단서로 수직 지각을 회복시키고 비마비측 체중이동을 재교육한다."}, {"q": "이완기 뇌졸중 환자에서 흔한 어깨 문제와 적절한 대응은?", "o": ["강직 - 지속신장", "어깨 아탈구 - 포지셔닝·지지", "석회화건염 - 초음파", "동결견 - 도수치료", "정상 - 조치불필요"], "a": 1, "e": "이완기에는 근긴장 소실로 어깨 아탈구가 흔하므로 지지·포지셔닝이 중요하다."}, {"q": "고유수용성신경근촉진법(PNF)의 기본 원리로 옳은 것은?", "o": ["원시반사로 공동운동 촉진", "적절한 저항을 이용한 방산(irradiation)과 강화", "최대 이완만 유도", "빠른 수동운동만 반복", "감각 입력을 차단"], "a": 1, "e": "PNF는 적절한 저항으로 강한 분절에서 약한 분절로 방산을 유도해 촉진한다."}, {"q": "뇌졸중 환자의 앉았다 일어서기(STS) 훈련으로 옳은 것은?", "o": ["몸통을 뒤로 젖혀 시작", "발을 무릎 뒤로 당기고 몸통을 앞으로 굽혀 발쪽으로 체중이동", "마비측 발을 비마비측보다 앞에 둠", "의자를 최대한 낮게만 사용", "팔로 세게 밀어 반동 이용"], "a": 1, "e": "STS는 발을 무릎보다 뒤로 두고 몸통 전방굴곡으로 무게중심을 발 위로 옮겨 일어선다."}, {"q": "건측 억제 유도운동치료(CIMT)의 기본 원리로 옳은 것은?", "o": ["양팔을 동시에 억제", "건측을 제한하고 환측을 집중 사용", "환측을 억제", "수동운동만 반복", "보조기 상시 착용"], "a": 1, "e": "건측 상지를 미트·부목으로 제한하고 환측을 집중 훈련한다."}, {"q": "Modified Ashworth Scale에서 '1+'가 의미하는 것은?", "o": ["저항 없음", "전 범위에 걸친 강한 저항", "걸림 후 가동범위 1/2 미만에서 약한 저항이 이어짐", "관절 강직으로 움직임 불가", "진자운동만 감소"], "a": 2, "e": "MAS 1+는 걸림 후 ROM 1/2 미만에서 약한 저항이 지속. 등급은 0,1,1+,2,3,4의 6단계."}, {"q": "손상 수준 아래에서 고유감각·진동감각이 소실되고 운동·통각·온도감각은 정상인 불완전 척수손상 증후군은?", "o": ["앞척수증후군", "뒤척수증후군", "중심척수증후군", "브라운-세카르증후군", "말총증후군"], "a": 1, "e": "뒤척수증후군은 후주(고유·진동감각)를 선택적으로 침범한다."}, {"q": "손상 수준 아래에서 운동·통각·온도감각이 소실되고 고유감각·진동감각은 보존되는 증후군은?", "o": ["앞척수증후군", "뒤척수증후군", "중심척수증후군", "브라운-세카르증후군", "전각증후군"], "a": 0, "e": "앞척수증후군은 앞기둥(운동)·척수시상로(통·온각)를 침범하고 후주는 보존된다."}, {"q": "고령자가 목 과신전 손상 후 상지가 하지보다 더 약한 양상을 보인다. 어떤 증후군인가?", "o": ["앞척수증후군", "뒤척수증후군", "중심척수증후군", "브라운-세카르증후군", "원뿔증후군"], "a": 2, "e": "중심척수증후군은 노인 과신전 손상에서 흔하며 상지 우세 위약이 특징."}, {"q": "척수 반쪽손상에서 동측 운동·고유감각 소실, 반대측 통각·온도감각 소실을 보이는 증후군은?", "o": ["앞척수증후군", "뒤척수증후군", "중심척수증후군", "브라운-세카르증후군", "말총증후군"], "a": 3, "e": "반쪽손상은 동측 피질척수로·후주 소실 + 교차하는 척수시상로로 반대측 통·온각 소실."}, {"q": "C6 완전 척수손상 환자에게 기대되는 손 기능은?", "o": ["정상 파악", "모든 자조활동 독립", "힘줄고정(tenodesis)으로 약하게 쥐기", "삼두근으로 밀기", "정밀 집기"], "a": 2, "e": "C6는 손목폄근이 살아 있어 손목을 펴면 손가락이 굽는 tenodesis 파악을 이용한다."}, {"q": "C7 신경근의 핵심근으로 옳은 것은?", "o": ["위팔두갈래근", "손목폄근", "위팔세갈래근(팔꿈치 폄)", "손가락굽힘근", "손 내재근"], "a": 2, "e": "ISNCSCI 핵심근: C5 팔꿈치굽힘, C6 손목폄, C7 팔꿈치폄(삼두근), C8 손가락굽힘, T1 손가락벌림."}, {"q": "C5 완전손상 환자의 식사 자립을 돕는 데 가장 적절한 보조도구는?", "o": ["이동형 팔지지대(mobile arm support)", "단하지보조기", "표준 수동휠체어", "앞바퀴워커", "콕업부목"], "a": 0, "e": "C5는 어깨·팔꿈치 일부 움직임이 가능하므로 이동형 팔지지대로 식사를 보조한다."}, {"q": "T4 완전손상 환자가 방광이 가득 찬 상태에서 심한 두통·발한·서맥과 급격한 혈압상승을 보인다. 가장 먼저 취할 조치는?", "o": ["눕히고 다리를 올린다", "상체를 세워 앉히고 방광 등 유발요인을 제거", "진통제를 투여", "냉찜질", "운동을 지속"], "a": 1, "e": "자율신경 반사부전 응급. 상체를 세워 혈압을 낮추고 방광 팽창 등 유발자극을 즉시 제거."}, {"q": "자율신경 반사부전(autonomic dysreflexia)이 주로 발생하는 손상 높이는?", "o": ["T6 이상", "T12 이하", "요수", "엉치", "말총"], "a": 0, "e": "보통 T6 이상 손상에서 유해자극에 교감신경이 과반응해 급격한 고혈압을 유발한다."}, {"q": "ASIA 손상척도 'A(완전손상)'의 정의로 옳은 것은?", "o": ["감각만 보존", "S4-5 포함 감각·운동 완전 소실", "절반 이상 근육이 3등급 이상", "정상", "운동만 보존"], "a": 1, "e": "ASIA A는 천수 S4-5의 감각·운동이 모두 없는 완전손상. B 감각보존, C/D 불완전운동, E 정상."}, {"q": "척수쇼크 종료(반사 복귀)의 초기 지표로 흔히 사용하는 반사는?", "o": ["무릎반사", "구해면체반사", "바빈스키반사", "복부반사", "턱반사"], "a": 1, "e": "척수쇼크기엔 반사가 소실되며, 구해면체반사 회복이 척수쇼크 종료의 초기 신호로 쓰인다."}, {"q": "가로막(횡격막)을 지배하여 이 수준 이상의 완전손상 시 호흡보조가 필요한 신경뿌리는?", "o": ["C1-2", "C3-5", "C6-7", "T1-4", "T6-12"], "a": 1, "e": "가로막신경은 C3-5. 이보다 높은 완전손상은 자발호흡이 어려워 인공호흡에 의존한다."}, {"q": "천수보다 위쪽 척수손상에서 나타나는 신경인성 방광의 유형은?", "o": ["이완성(저류)", "반사성(경직성)", "감각소실만", "정상", "무반사성"], "a": 1, "e": "천수 위 손상은 반사성(경직성) 방광, 천수·말총 손상은 이완성(무반사) 방광을 보인다."}, {"q": "파킨슨병의 임상양상으로 옳은 것은?", "o": ["활동(의도)떨림이 나타난다", "자세긴장성이 소실된다", "운동 시작이 어렵고 움직임이 느려진다", "술 취한 듯한 실조보행을 보인다", "심부건반사가 항진된다"], "a": 2, "e": "파킨슨은 서동(운동개시 곤란)이 핵심. 안정떨림·경직·자세불안정이 동반된다."}, {"q": "파킨슨병 떨림의 특징으로 옳은 것은?", "o": ["동작 중 악화되는 의도진전", "안정 시 나타나는 알약말기 떨림", "자세 유지 시에만 발생", "떨림은 없다", "고빈도 미세떨림"], "a": 1, "e": "파킨슨 떨림은 안정 시 알약말기(pill-rolling) 떨림. 의도진전은 소뇌 병변 소견."}, {"q": "파킨슨병 환자의 보행 동결(freezing) 개선에 가장 효과적인 전략은?", "o": ["완전 안정", "바닥의 시각 표적선·청각 박자 같은 외부 신호(cueing)", "빠른 수동관절운동", "보조기 착용", "심부마찰"], "a": 1, "e": "외부 시청각 cue가 기저핵 우회 경로를 활성화해 보행 개시·동결 극복에 효과적이다."}, {"q": "Hoehn & Yahr 척도가 평가하는 것은?", "o": ["뇌졸중 운동회복", "파킨슨병의 진행·장애 단계", "경직 정도", "균형만", "인지기능"], "a": 1, "e": "Hoehn & Yahr는 파킨슨병의 중증도·진행을 1~5단계로 분류한다."}, {"q": "아래운동신경세포 변성으로 손의 작은근육에서 위약·위축이 시작되고 말기에 호흡근을 침범하며 감각은 정상인 질환군의 특징으로 옳은 것은?", "o": ["감각신경을 침범", "아래운동신경세포 침범·진행성이며 감각은 보존", "중추 탈수초성", "자가면역 회복성", "유전성 근이영양"], "a": 1, "e": "아래운동신경세포 변성(운동신경세포병 계열)은 위축·섬유다발수축을 보이며 감각은 보존된다."}, {"q": "다발경화증 환자를 위한 물리치료 교육으로 옳은 것은?", "o": ["고온 목욕을 권장", "피로와 과열을 피함", "최대강도 운동 수행", "더운 시간대에 운동", "저녁에 고강도 운동"], "a": 1, "e": "열에 증상이 악화되는 Uhthoff 현상 때문에 과열을 피하고 피로를 관리한다."}, {"q": "감염 후 발에서 시작해 위로 올라오는 대칭성 이완마비와 반사소실을 보이는 환자의 급성기 운동 원칙은?", "o": ["고강도 저항운동", "과도한 피로·과부하를 피함", "절대안정만 유지", "빠른 지구력 훈련", "최대근력검사 반복"], "a": 1, "e": "길랑-바레 증후군 급성기에는 과사용·탈진성 운동을 피한다(대개 회복 경과)."}, {"q": "척수공동증(syringomyelia)의 전형적 감각소실 양상은?", "o": ["하지 통각 소실", "어깨·팔의 망토(cape) 모양 통각·온도감각 소실", "얼굴 감각 소실", "발끝 진동감각 소실", "감각 정상"], "a": 1, "e": "중심관 주위 척수시상로 교차부 침범으로 어깨·팔의 망토형 해리성 감각소실을 보인다."}, {"q": "노신경(요골신경) 마비에서 나타나는 대표 변형과 약화 근육은?", "o": ["갈퀴손 - 손 내재근", "손목처짐(wristdrop) - 손목폄근", "원숭이손 - 엄지맞섬근", "발처짐 - 앞정강근", "날개어깨 - 앞톱니근"], "a": 1, "e": "노신경마비는 손목폄근 약화로 손목처짐(토요일밤·신혼밤 마비)을 유발한다."}, {"q": "자신경(척골신경) 병증에서 나타나는 손 변형은?", "o": ["손목처짐", "4·5손가락의 갈퀴손", "원숭이손", "주먹손", "정상"], "a": 1, "e": "척골신경 손상은 손 내재근을 침범해 4·5손가락 갈퀴손을 유발한다."}, {"q": "첫~셋째손가락의 저림이 밤에 심하고 팔렌검사·티넬징후가 양성인 환자에게 야간에 권장되는 처치는?", "o": ["손목을 과도하게 펴서 고정", "손목 중립위 보조기 야간 착용", "손가락 끝에 힘을 주어 물건 잡기", "손목을 테이블 모서리에 걸치기", "팔꿈치를 굽혀 고정"], "a": 1, "e": "손목터널증후군(정중신경 압박) → 중립위 야간 부목으로 압박을 줄인다."}, {"q": "헌팅턴병의 대표적 운동장애는?", "o": ["안정떨림", "무도증(chorea)", "경직", "서동", "이완"], "a": 1, "e": "헌팅턴병(상염색체 우성)은 무도증과 함께 인지·정서 변화를 보인다."}, {"q": "아래운동신경세포(LMN) 병변의 징후로 옳은 것은?", "o": ["경직", "반사항진", "바빈스키 양성", "이완·위축·섬유다발수축", "간대(clonus)"], "a": 3, "e": "LMN 병변은 이완·반사저하·근위축·섬유다발수축. 경직·반사항진·바빈스키는 UMN 소견."}, {"q": "대뇌겉질 운동영역 손상, 바빈스키반사 양성, 과긴장으로 정형화된 운동패턴을 보이는 뇌성마비의 신경학적 유형은?", "o": ["실조형", "강직형(spastic)", "떨림형", "저긴장형", "느린비틀림운동형"], "a": 1, "e": "강직형은 상위운동신경 침범으로 경직·과반사를 보이며 가장 흔한 유형이다."}, {"q": "바닥핵 손상과 관련되며 느린 비틀림 불수의운동을 보이는 뇌성마비 유형은?", "o": ["강직형", "실조형", "무정위운동형(느린비틀림)", "저긴장형", "경직편마비"], "a": 2, "e": "무정위운동형(dyskinetic)은 바닥핵 손상과 관련되어 불수의적 느린비틀림 운동을 보인다."}, {"q": "소뇌 손상과 관련되어 협응·균형장애를 보이는 뇌성마비 유형은?", "o": ["강직형", "실조형(ataxic)", "무정위형", "경직양하지형", "혼합형"], "a": 1, "e": "실조형은 소뇌 손상과 관련되어 균형·협응 장애, 넓은 지지면 보행을 보인다."}, {"q": "GMFCS에서 제한 없이 걷지만 고급 운동(속도·균형·협응)에서만 제한되는 단계는?", "o": ["Ⅰ단계", "Ⅱ단계", "Ⅲ단계", "Ⅳ단계", "Ⅴ단계"], "a": 0, "e": "GMFCS Ⅰ은 제한 없이 걷고 고급 운동에서만 제한. Ⅴ로 갈수록 자립 이동이 어려워진다."}, {"q": "근긴장이 매우 낮아 바로누운자세에서 개구리다리 자세를 취하는 저긴장 뇌성마비 아동의 물리치료 목표로 옳은 것은?", "o": ["공동운동 억제", "관절 주위 협력수축(공동수축)으로 안정성 촉진", "빠른 이완 유도", "경직 감소", "관절가동 제한"], "a": 1, "e": "저긴장 아동은 관절 주위 공동수축으로 자세 안정성을 촉진하는 것이 목표다."}, {"q": "운동조절 발달 순서에서 '선 자세로 관절 주위 협력수축을 만들어 자세를 유지'하는 단계는?", "o": ["운동성(mobility)", "안정성(stability)", "조절된 운동성", "숙련(skill)", "반사"], "a": 1, "e": "발달 순서는 운동성→안정성→조절된 운동성→숙련. 협력수축으로 자세 유지 = 안정성."}, {"q": "비대칭성 긴장성 목반사(ATNR)의 정상 통합 시기는?", "o": ["생후 4~6개월", "생후 12개월", "생후 18개월", "생후 24개월", "평생 지속"], "a": 0, "e": "ATNR은 대략 생후 4~6개월경 통합된다. 이후 지속되면 비정상이다."}, {"q": "모로반사(Moro reflex)의 대략적 통합 시기는?", "o": ["생후 1개월", "생후 4~6개월", "생후 12개월", "생후 18개월", "평생 지속"], "a": 1, "e": "모로반사는 대략 생후 4~6개월(늦어도 6개월)경 통합된다."}, {"q": "정상 발달에서 혼자 앉기(독립 좌위)가 가능해지는 대략적 시기는?", "o": ["생후 2개월", "생후 4개월", "생후 6개월", "생후 12개월", "생후 18개월"], "a": 2, "e": "독립 좌위는 대략 생후 6개월. 목 가누기 3~4개월, 기기 8~9개월, 독립보행 약 12개월."}, {"q": "낙하산(보호신전)반사의 대략적 출현 시기는?", "o": ["출생 시", "생후 2개월", "생후 6~9개월경 출현하여 지속", "생후 18개월", "출현하지 않음"], "a": 2, "e": "보호신전(낙하산)반사는 대략 생후 6~9개월에 출현해 평생 유지된다."}, {"q": "크룸프케마비(Klumpke, C8-T1)에서 주로 침범되는 부위는?", "o": ["어깨 벌림근", "팔꿈치 굽힘근", "손 내재근·손가락 굽힘근(갈퀴손)", "발목 폄근", "몸통근"], "a": 2, "e": "크룸프케마비는 아래팔신경얼기(C8-T1)를 침범해 손 내재근 위약·갈퀴손을 유발한다."}, {"q": "에르브마비(Erb, C5-6)의 전형적 자세는?", "o": ["갈퀴손", "웨이터 팁(waiter's tip) 자세", "원숭이손", "발처짐", "개구리자세"], "a": 1, "e": "어깨 모음·안쪽돌림, 팔꿈치 폄, 아래팔 엎침의 웨이터 팁 자세가 특징."}, {"q": "뒤시엔느 근이영양증 아동이 바닥에서 일어설 때 자기 다리·몸을 손으로 짚어 기어오르듯 일어서는 징후는?", "o": ["트렌델렌버그 징후", "가우어 징후(Gower's sign)", "바빈스키 징후", "롬버그 징후", "호프만 징후"], "a": 1, "e": "몸통·엉덩관절 폄근 약화로 Gower's sign을 보이며 장딴지 위유성비대가 동반된다."}, {"q": "Berg Balance Scale(BBS)이 주로 평가하는 것은?", "o": ["보행 속도", "정적·동적 균형과 낙상 위험", "경직 정도", "인지기능", "폐기능"], "a": 1, "e": "BBS는 14개 항목(56점)으로 균형과 낙상 위험을 평가한다."}, {"q": "Fugl-Meyer Assessment(FMA)의 주 용도는?", "o": ["파킨슨 진행 평가", "뇌졸중 후 운동·감각 회복의 정량 평가", "척수손상 분류", "소아 발달 선별", "균형 평가"], "a": 1, "e": "FMA는 뇌졸중 후 운동·감각·균형·관절가동범위 회복을 정량화한다."}, {"q": "두 발을 모으고 설 때 눈을 뜨면 안정적이지만 눈을 감으면 크게 흔들려 넘어지려 한다(롬버그 양성). 실조의 유형은?", "o": ["소뇌성 실조", "감각성(고유감각·후주) 실조", "전정성 어지럼 단독", "정상", "운동성 실조"], "a": 1, "e": "개안 시 시각으로 보상되다 폐안 시 무너지는 롬버그 양성은 고유감각(후주) 손상을 시사."}, {"q": "소뇌 병변의 소견이 아닌 것은?", "o": ["의도진전", "겨냥이상(dysmetria)", "길항운동반복장애", "안진(nystagmus)", "안정떨림"], "a": 4, "e": "소뇌 병변은 실조·의도진전·dysmetria·안진 등. 안정떨림은 파킨슨(기저핵) 소견이다."}, {"q": "벨마비(Bell's palsy)가 침범하는 뇌신경은?", "o": ["삼차신경(Ⅴ)", "안면신경(Ⅶ)", "설인신경(Ⅸ)", "미주신경(Ⅹ)", "갓돌림신경(Ⅵ)"], "a": 1, "e": "벨마비는 안면신경(Ⅶ) 말초성 마비로 이마 포함 한쪽 얼굴 전체 표정근이 마비된다."}, {"q": "양성돌발두위현훈(BPPV)의 대표적 이석정복 치료 수기는?", "o": ["에플리(Epley) 수기", "맥켄지 신전", "토마스 검사", "팔렌 검사", "브룬스트롬 접근"], "a": 0, "e": "BPPV는 반고리관 내 이석 이동이 원인으로 Epley 이석정복술로 치료한다."}, {"q": "예측적(anticipatory) 균형조절을 증진하는 훈련으로 가장 적절한 것은?", "o": ["외부에서 밀어 반응 유도", "다양한 방향으로 팔 뻗기(reaching)", "눈을 감고 폼패드 위에 서기", "수동관절운동", "전기자극"], "a": 1, "e": "예측적 자세조절은 스스로 시작하는 팔 뻗기 등으로 훈련. 반응적 조절은 외란(perturbation) 대응."}, {"q": "TUG(Timed Up and Go) 검사가 주로 평가하는 것은?", "o": ["인지기능", "기능적 이동성과 낙상 위험", "경직", "감각", "폐기능"], "a": 1, "e": "TUG는 일어나 걷고 돌아와 앉는 시간으로 기능적 이동성·낙상 위험을 평가한다."}, {"q": "10m 보행검사(10MWT)가 측정하는 것은?", "o": ["보행 지구력", "보행 속도", "균형", "근력", "인지"], "a": 1, "e": "10MWT는 보행 속도를 측정. 지구력은 6분 보행검사(6MWT)로 평가한다."}, {"q": "롬버그 검사에서 눈을 뜨거나 감거나 모두 불안정하다면 시사되는 것은?", "o": ["감각성 실조", "소뇌성 실조", "정상", "말초신경 정상", "근력 저하"], "a": 1, "e": "소뇌성 실조는 시각 보상과 무관하게 불안정하다(감각성은 폐안 시에만 악화)."}, {"q": "전정재활에서 반복 자극으로 어지럼 민감도를 줄이는 기법은?", "o": ["습관화(habituation)", "저항강화", "견인", "냉치료", "전기자극"], "a": 0, "e": "습관화는 유발 자세·움직임을 반복 노출해 어지럼 반응을 점차 줄인다."}], "exercise": [{"q": "도수근력검사(MMT)에서 \"중력에 대항하여 저항 없이 전 관절가동범위 운동이 가능\"한 등급은?", "o": ["2등급(Poor)", "3등급(Fair)", "4등급(Good)", "5등급(Normal)"], "a": 1, "e": "3등급(Fair)은 중력에 대항해 full ROM이 가능하되 외부 저항은 이기지 못하는 상태. 임상적으로 중요한 기준점이다."}, {"q": "PNF는 무엇의 약자인가?", "o": ["점진적 신경 피로", "고유수용성 신경근 촉진", "말초신경 자극", "수동적 신경 이완"], "a": 1, "e": "PNF = Proprioceptive Neuromuscular Facilitation. 나선·대각선 패턴과 고유수용기 자극으로 근수축·협응을 촉진한다."}, {"q": "근육 길이가 변하지 않으면서 장력만 발생하는 수축은?", "o": ["등척성(isometric)", "구심성(concentric)", "원심성(eccentric)", "등속성(isokinetic)"], "a": 0, "e": "등척성 수축은 관절 움직임 없이 장력을 발생시킨다(예: 벽 밀기). 초기 재활·통증 시 관절 부담 없이 근력 유지에 쓰인다."}, {"q": "원심성(eccentric) 수축의 예로 옳은 것은?", "o": ["계단을 내려갈 때 대퇴사두근", "덤벨을 들어올릴 때 이두근", "벽을 미는 동작", "제자리에서 힘주기"], "a": 0, "e": "원심성 수축은 근육이 장력을 유지한 채 길어지는 것. 계단 하강 시 대퇴사두근이 대표적이며, 지연성근육통(DOMS)과 관련이 깊다."}, {"q": "수동 관절가동범위(PROM) 운동의 주된 목적이 아닌 것은?", "o": ["관절 유연성·가동성 유지", "근력 강화", "구축 예방", "순환 촉진"], "a": 1, "e": "PROM은 외력으로 움직이므로 근수축이 없어 근력 강화 효과는 없다. 근력 향상에는 능동·저항 운동이 필요하다."}], "msk": [{"q": "요추 추간판 탈출증에서 신경근 압박으로 하지로 뻗치는 통증을 무엇이라 하나?", "o": ["방사통(radicular pain, 좌골신경통)", "환상통", "연관통", "작열통"], "a": 0, "e": "탈출된 수핵이 신경근을 자극하면 해당 피부분절을 따라 방사통(좌골신경통)이 나타난다. SLR(하지직거상) 검사로 확인한다."}, {"q": "유착성 관절낭염(오십견, frozen shoulder)의 전형적 특징은?", "o": ["능동 ROM만 제한", "능동·수동 ROM 모두 제한", "통증 전혀 없음", "야간통 없음"], "a": 1, "e": "관절낭 자체가 유착·구축되므로 능동뿐 아니라 수동 ROM도 전 방향(특히 외회전)에서 제한되는 것이 회전근개 파열과의 감별점이다."}, {"q": "발목에서 가장 흔한 염좌의 손상 기전은?", "o": ["내번(inversion)", "외번(eversion)", "배측굴곡", "과신전"], "a": 0, "e": "내번 손상이 대부분으로 외측의 전거비인대(ATFL)가 가장 흔히 손상된다."}, {"q": "테니스엘보(외측상과염)에서 통증이 유발되는 저항 동작은?", "o": ["손목 굴곡 저항", "손목 신전(폄) 저항", "어깨 외전", "무릎 신전"], "a": 1, "e": "손목 신근(특히 단요측수근신근, ECRB)의 총건 부착부 병변으로, 손목 신전 저항 시 외측상과에 통증이 유발된다(Cozen 검사)."}, {"q": "무릎 전방십자인대(ACL) 손상 평가에 사용하는 검사는?", "o": ["McMurray 검사", "Thomas 검사", "Lachman·전방전위검사", "Phalen 검사"], "a": 2, "e": "Lachman 검사와 전방전위검사(anterior drawer)로 경골의 전방 이동(ACL 이완)을 평가한다. McMurray는 반월상연골 검사이다."}], "modality": [{"q": "급성 연부조직 손상 직후 48시간 이내 우선 권장되는 처치는?", "o": ["한랭요법(냉치료)", "지속파 초음파", "핫팩 온열", "파라핀욕"], "a": 0, "e": "급성기에는 한랭요법으로 혈관을 수축시켜 부종·염증·통증을 줄인다(전통적 RICE, 최근 PEACE&LOVE). 온열은 급성기 부종을 악화시킬 수 있다."}, {"q": "경피신경전기자극(TENS)의 주된 치료 목적은?", "o": ["통증 조절", "근비대", "골 유합 촉진", "관절 정렬"], "a": 0, "e": "TENS는 주로 진통 목적. 저주파 자극이 관문조절설과 내인성 아편양물질 기전을 통해 통증 전달을 억제한다."}, {"q": "치료적 초음파에서 조직의 \"열 효과\"를 극대화하려는 설정은?", "o": ["펄스파·저강도", "지속파(continuous)", "수중 비접촉", "최저 주파수만"], "a": 1, "e": "지속파(100% duty cycle)는 열 효과가 크고(심부 온열), 펄스파(예: 20%)는 열보다 비열적(기계적) 효과를 목적으로 한다."}, {"q": "온열치료의 생리적 효과가 아닌 것은?", "o": ["혈류 증가", "조직 신장성 증가", "혈관 수축", "통증 완화"], "a": 2, "e": "온열은 혈관 확장을 일으켜 혈류를 늘린다. 혈관 수축은 한랭치료의 효과이다."}, {"q": "TENS의 진통 기전을 설명하는 이론으로, 굵은 신경섬유 자극이 통증 전달을 억제한다는 것은?", "o": ["관문조절설(gate control theory)", "슬라이딩 필라멘트 이론", "전운동 이론", "베르누이 원리"], "a": 0, "e": "Melzack & Wall의 관문조절설: 굵은 유수 A-β 섬유 자극이 척수 후각에서 가느다란 통증 섬유(C, A-δ)의 전달을 억제(gate 닫음)한다."}], "cardio": [{"q": "성인의 정상 안정 시 호흡수는? (강의 슬라이드 기준)", "o": ["6~10회/분", "12~20회/분", "25~30회/분", "40~70회/분"], "a": 1, "e": "슬라이드 기준 성인 12~20회/분, 신생아 40~70회/분, 1분 호흡량 약 6L, 하루 약 8000L."}, {"q": "바깥호흡(외호흡)이 일어나는 곳은?", "o": ["허파꽈리와 모세혈관 사이", "모세혈관과 조직세포 사이", "기관지와 세기관지 사이", "코안과 인두 사이"], "a": 0, "e": "바깥호흡=허파꽈리와 모세혈관 사이 가스교환, 속호흡=모세혈관과 조직세포 사이 가스교환."}, {"q": "참갈비뼈(true ribs)에 해당하는 것은?", "o": ["1~7번", "8~10번", "8~12번", "11~12번"], "a": 0, "e": "참갈비뼈 1~7번(복장뼈에 직접 연결), 거짓갈비뼈 8~12번(그중 11~12번은 뜬갈비뼈)."}, {"q": "흡인성 폐렴(aspiration pneumonia)의 위험을 높이는 자세는?", "o": ["바로누운자세", "선 자세", "엎드린 자세", "앉은 자세"], "a": 0, "e": "슬라이드—흡인의 약 70%가 수면 중 오염된 구인두 물질 흡인이며 바로누운자세가 흡인 위험을 증가시킨다."}, {"q": "오므린 입술 호흡(pursed-lip breathing)의 주된 목적은?", "o": ["들숨근 근력 강화", "날숨 시 기도 허탈 방지·환기 개선", "기침 반사 억제", "흉곽 고정"], "a": 1, "e": "오므린 입술로 날숨 시 기도내압을 유지해 소기도 허탈(air trapping)을 줄이고 호흡곤란을 완화한다(특히 COPD)."}, {"q": "들숨근 훈련(IMT)에 대한 설명으로 옳은 것은?", "o": ["날숨에 강한 저항을 준다", "좁은 입구를 통해 들숨에 부하를 준다", "하루 종일 착용한다", "근력만 향상된다"], "a": 1, "e": "슬라이드—좁은 입구로 들숨에 저항, 날숨은 대개 무저항. 15~30분 하루 1~2회로 들숨근의 근력·지구력을 향상시킨다."}, {"q": "체위배출법(postural drainage)의 기본 원리는?", "o": ["진동만으로 분비물을 뺀다", "중력을 이용해 기관지 분비물을 배출한다", "흡인기만 사용한다", "산소만 공급한다"], "a": 1, "e": "해당 허파구역의 기관지가 땅에 수직이 되도록 자세를 잡아 중력과 점액섬모 운반으로 분비물을 배출하며 타진·진동을 병행한다."}, {"q": "강화 폐활량 호흡(incentive spirometry, 국소팽창호흡)의 주 목적은?", "o": ["최대 날숨 유도", "지속적 최대 들숨으로 수술 후 무기폐 예방", "기침 유발", "심박수 증가"], "a": 1, "e": "지속적 최대 들숨을 강조해 수술 후 허파꽈리 확장부전(무기폐)을 예방하고 저환기 구역의 환기를 향상시킨다."}], "funcanat": [{"q": "하나의 α운동신경세포와 그것이 지배하는 모든 근섬유를 합쳐 무엇이라 하나?", "o": ["운동단위(motor unit)", "운동종판", "근방추", "힘줄기관"], "a": 0, "e": "운동단위 = α운동신경세포 + 그 세포가 지배하는 근섬유들. 정밀한 운동을 하는 근육일수록 신경지배비(근섬유 수)가 작다."}, {"q": "크기 원리(size principle)에 따라 수의적 수축에서 가장 먼저 동원되는 것은?", "o": ["큰(빠른) 운동단위", "작은(느린) 운동단위", "무작위로 동원", "모두 동시에"], "a": 1, "e": "역치가 낮은 작은 운동단위(Type I, 느린)가 먼저 동원되고, 요구 장력이 커지면 큰 운동단위(Type II)가 추가 동원된다."}, {"q": "Fitts와 Posner의 운동학습 3단계 순서로 옳은 것은?", "o": ["자율 → 연합 → 인지", "인지 → 연합 → 자율", "연합 → 인지 → 자율", "인지 → 자율 → 연합"], "a": 1, "e": "인지(cognitive) → 연합(associative) → 자율(autonomous) 단계로 진행한다. 초기에는 시행착오·인지 부담이 크고, 자율 단계에서 자동화된다."}, {"q": "팔을 벌릴 때 상완와관절과 견갑흉곽관절이 약 2:1로 함께 움직이는 것을 무엇이라 하나?", "o": ["견갑상완리듬(scapulohumeral rhythm)", "경추회전", "골반경사", "요추리듬"], "a": 0, "e": "견갑상완리듬 ≈ 2:1(GH:ST). 어깨 180° 외전 중 약 120°는 상완와관절, 약 60°는 견갑골 회전이 담당한다."}, {"q": "닫힌사슬운동(CKC)의 예로 옳은 것은?", "o": ["스쿼트", "앉아 무릎 펴기(leg extension)", "누워 다리 들기", "앉아 발차기"], "a": 0, "e": "닫힌사슬운동은 말단분절이 고정된 상태(스쿼트·푸시업)로 관절 압박·공동수축·기능적 특성을 가진다. leg extension은 열린사슬(OKC)이다."}, {"q": "정상 보행 주기에서 입각기(stance)와 유각기(swing)의 대략적 비율은?", "o": ["40 : 60", "50 : 50", "60 : 40", "80 : 20"], "a": 2, "e": "한 보행주기에서 입각기 약 60%, 유각기 약 40%. 양다리 지지기(double support)는 약 20%로, 보행 속도가 빨라지면 줄어든다."}], "clindx": [{"q": "물리치료 임상의사결정 과정에서 환자의 주관적·객관적 정보를 수집·해석해 문제를 규정하는 첫 단계는?", "o": ["평가(Examination/Assessment)", "중재(치료)", "재평가", "퇴원 계획"], "a": 0, "e": "임상의사결정은 평가(정보수집·해석) → 물리치료 진단 → 목표·계획 → 중재 → 재평가의 순환 과정이며, 평가가 그 출발점이다."}, {"q": "기능·장애·건강을 신체기능/활동/참여/환경·개인요인으로 분류하는 WHO의 틀은?", "o": ["ICF", "ICD-10", "DSM-5", "DRG"], "a": 0, "e": "ICF(International Classification of Functioning, Disability and Health)는 물리치료 진단·목표설정의 국제 표준 틀이다. ICD-10은 질병분류."}, {"q": "SOAP 기록에서 환자가 호소한 증상 등 ‘주관적 정보’가 들어가는 항목은?", "o": ["S(Subjective)", "O(Objective)", "A(Assessment)", "P(Plan)"], "a": 0, "e": "S=주관적(환자 진술), O=객관적(측정·검사 결과), A=평가/임상판단, P=계획. 임상의사결정 기록의 기본 구조."}, {"q": "근거기반 물리치료(EBP)의 3요소에 해당하지 않는 것은?", "o": ["최선의 연구 근거", "임상가의 전문성", "환자의 가치·선호", "병원의 수익성"], "a": 3, "e": "EBP = 최선의 연구 근거 + 임상 전문성 + 환자의 가치·선호(Sackett). 수익성은 포함되지 않는다."}, {"q": "물리치료사가 질병명이 아니라 ‘움직임·기능 문제’를 규정해 중재 방향을 정하는 것을 무엇이라 하나?", "o": ["물리치료 진단(movement diagnosis)", "의학적 진단", "영상 진단", "병리 진단"], "a": 0, "e": "물리치료 진단은 임상추론의 결과로 움직임·기능 장애를 규정해 중재를 결정한다. 의학적 진단(질병명)과 구분된다."}, {"q": "여러 가설을 세우고 검사로 검증·수정하며 결론에 이르는 임상추론 방식은?", "o": ["가설연역적 추론(hypothetico-deductive)", "무작위 검사", "직관에만 의존", "암기 위주"], "a": 0, "e": "초심자는 가설연역적 추론(가설→검사→검증/배제)을, 숙련자는 패턴인식을 병행한다. 특수검사로 가설을 확인/배제한다."}]};
+const SUBJ_NAME = {"anatomy": "해부학", "neuroanat": "신경해부학", "neuro": "신경계물리치료", "exercise": "운동치료학", "funcanat": "기능해부·신경운동", "msk": "근골격계물리치료", "modality": "물리적인자치료", "cardio": "심화호흡물리치료", "clindx": "임상의사결정"};
+
+/* ---------- Entities ---------- */
+function mkChar(o){
+  return Object.assign({
+    x:0,y:0, dir:'down', moving:false, speed:78, walk:0,
+    tx:null, ty:null, state:'idle', timer: rnd(1,3),
+    bubble:null, bubbleT:0, thought:null, thoughtT:0,
+    color:'#7c9cff', skin:'#f0c9a8', hair:'#33302e',
+  }, o);
+}
+
+/* Player */
+const player = mkChar({ x:990, y:1110, name:'나 (신입생)', color:'#4fd1c5', hair:'#2a2320', speed:235, isPlayer:true });
+
+/* Professors: stationed at their hall, occasionally pace; give lectures/quizzes */
+const PROFS = [{"key": "anatomy", "name": "김신영 교수", "color": "#b0413e", "hair": "#2b2b2b", "emoji": "👩‍🏫", "lines": ["해부학은 실습에서 완성됩니다 — 직접 만져보고 외워요.", "근골격계 중재도 결국 해부 지식이 기반이에요.", "운동생리학으로 근육의 원리를 봅니다."]}, {"key": "neuroanat", "name": "정형국 교수", "color": "#5b6ee0", "hair": "#1f1f1f", "emoji": "🧑‍🏫", "lines": ["신경해부는 경로와 교차가 핵심입니다.", "임상운동학으로 움직임을 해석해요.", "신경계 중재 실습, 이론과 손이 만나야 합니다."]}, {"key": "neuro", "name": "심경섭 교수", "color": "#7b57c9", "hair": "#1f1f1f", "emoji": "🧑‍🏫", "lines": ["신경계 중재는 과제지향·반복량·강도예요.", "지역사회로 나가면 물리치료가 삶이 됩니다.", "뇌졸중 회복, 근거로 접근합시다."]}, {"key": "exercise", "name": "신호진 교수", "color": "#2f9e8f", "hair": "#332b22", "emoji": "🧑‍🏫", "lines": ["운동치료는 생리학 위에 섭니다.", "MMT 3등급, 왜 기준일까요? 중력이죠.", "인체생리학을 알면 처방이 보입니다."]}, {"key": "msk", "name": "정호발 교수", "color": "#d08a2e", "hair": "#3a2c1a", "emoji": "🧑‍🏫", "lines": ["정형은 특수검사로 감별부터.", "근골격계 운동치료, 자세가 절반이에요.", "정형물리치료 실습, 손끝 감각입니다."]}, {"key": "modality", "name": "김동훈 교수", "color": "#3a72c4", "hair": "#232323", "emoji": "🧑‍🏫", "lines": ["급성기엔 얼음, 만성기엔 열.", "근거중심으로 인자치료를 고릅니다.", "TENS의 심장은 관문조절설이에요."]}, {"key": "cardio", "name": "심경섭 교수", "color": "#c8506a", "hair": "#1f1f1f", "emoji": "🧑‍🏫", "lines": ["호흡도 근육 훈련입니다 — IMT로 강화해요.", "급성기엔 얼음, 만성 배담은 중력이 약입니다.", "오므린 입술호흡 하나로 COPD가 편해져요."]}, {"key": "funcanat", "name": "김도현 학과장", "color": "#3d9a70", "hair": "#1f1f1f", "emoji": "🧑‍🏫", "lines": ["기능해부를 알아야 움직임이 보입니다.", "신경계 운동치료는 과제와 반복이 핵심이에요.", "학과장으로서, 여러분의 성장을 응원합니다!"]}, {"key": "clindx", "name": "이광재 교수", "color": "#2c8f9c", "hair": "#2b2620", "emoji": "🧑‍🏫", "lines": ["물리치료 진단은 임상의사결정의 출발입니다.", "평가가 정확해야 치료가 정확해요.", "문제를 정의하면 절반은 해결된 겁니다."]}];
+const professors = PROFS.map(p=>{
+  const b = building(p.key); const d = doorOf(b);
+  return mkChar({ x:d.x-46, y:d.y+6, homeX:d.x-46, homeY:d.y+6, name:p.name, color:p.color, hair:p.hair,
+    emoji:p.emoji, role:'prof', subj:p.key, lines:p.lines, speed:40 });
+});
+
+/* Students: autonomous wanderers (Smallville-style) */
+const STUDENT_NAMES = ["유재석", "아이유", "박보검", "손예진", "정국", "제니", "차은우", "카리나", "뷔", "지수", "강호동", "아이린", "임영웅", "하니", "태연", "이영지", "박명수", "수지", "류진", "호시", "마동석", "장원영"];
+const STUDENT_LINES = ["신경해부 교차 또 헷갈려…", "호흡재활 실습 오늘이지?", "뇌졸중 케이스 재밌더라", "도서관 자리 남았나?", "교수님 오늘 퀴즈 낸다던데?", "커피 한 잔 하고 가자.", "LSVT-BIG 시연 봤어?", "체위배출법 자세 어렵다", "관문조절설 시험 나온대", "SLR 검사 연습하자."];
+const students = STUDENT_NAMES.map((nm,i)=>{
+  const w = WP[i % WP.length];
+  const palette = ['#e07a5f','#81b29a','#f2cc8f','#c98bb9','#6aa9e0','#e8b04b','#88c0a0','#d98f8f'];
+  return mkChar({ x:w.x+rnd(-30,30), y:w.y+rnd(-30,30), name:nm, color:palette[i%palette.length],
+    hair:choice(['#2b2320','#3a2c1a','#1f1f1f','#4a3520']), role:'student', speed:rnd(52,74),
+    homeSubj: ['anatomy','neuroanat','neuro','exercise','funcanat','msk','modality','cardio','clindx'][i%9] });
+});
+
+const npcs = professors.concat(students);
+const allChars = [player].concat(npcs);
+
+/* ---------- Utils ---------- */
+function rnd(a,b){ return a + Math.random()*(b-a); }
+function choice(a){ return a[Math.floor(Math.random()*a.length)]; }
+function clamp(v,a,b){ return v<a?a:(v>b?b:v); }
+function dist(ax,ay,bx,by){ const dx=ax-bx, dy=ay-by; return Math.hypot(dx,dy); }
+
+/* ---------- Input ---------- */
+const keys = {};
+const MOVE_KEYS = new Set(['arrowup','arrowdown','arrowleft','arrowright','w','a','s','d','ㅈ','ㅁ','ㄴ','ㅇ']);
+addEventListener('keydown', e=>{
+  const k = e.key.toLowerCase();
+  if (MOVE_KEYS.has(k) || k===' ') { if(!anyModalOpen()) e.preventDefault(); }
+  keys[k] = true;
+  if (k==='e' && !anyModalOpen() && state.entered) tryInteract();
+  if (k==='escape'){ if(isShown('dlg')) closeDialog(); else if(isShown('ollama')) closeOllama(); else if(isShown('help')) hideEl('help'); else if(isShown('ach')) hideEl('ach'); }
+});
+addEventListener('keyup', e=>{ keys[e.key.toLowerCase()] = false; });
+
+/* ---------- Camera & State ---------- */
+const cam = { x:0, y:0 };
+const state = {
+  entered:false, score:0, correct:0, visited:new Set(),
+  spectate:false, timeScale:1,
+  clock: 9*60, // minutes from 00:00, start 09:00
+  ollama:{ enabled:false, url:'http://127.0.0.1:11434', model:'gemma3', ok:false },
+  near:null, // {type:'prof'|'building', ref}
+  spectateTarget:null, spectateTimer:0,
+};
+
+/* class schedule: minute-of-hour < 45 => 수업중, else 쉬는시간 */
+function isClassTime(){ return (Math.floor(state.clock)%60) < 45; }
+function clockStr(){ const h=Math.floor(state.clock/60)%24, m=Math.floor(state.clock%60); return String(h).padStart(2,'0')+':'+String(m).padStart(2,'0'); }
+
+/* ==========================================================================
+   AI / MOVEMENT
+   ========================================================================== */
+function moveToward(c, tx, ty, dt){
+  const dx = tx-c.x, dy = ty-c.y, d = Math.hypot(dx,dy);
+  if (d < 3){ c.x=tx; c.y=ty; return true; }
+  const step = c.speed*dt;
+  c.x += dx/d*Math.min(step,d);
+  c.y += dy/d*Math.min(step,d);
+  if (Math.abs(dx) > Math.abs(dy)) c.dir = dx>0?'right':'left';
+  else c.dir = dy>0?'down':'up';
+  c.moving = true; c.walk += dt*10;
+  return false;
+}
+
+function pickDestination(c){
+  if (c.role==='prof'){
+    // during class -> stand at hall door; break -> pace nearby
+    const b = building(c.subj); const d = doorOf(b);
+    if (isClassTime()){ c.tx=c.homeX; c.ty=c.homeY; }
+    else { c.tx = d.x + rnd(-70,70); c.ty = d.y + rnd(-10,50); }
+  } else {
+    // student
+    if (isClassTime()){
+      const b = building(c.homeSubj); const d = doorOf(b);
+      c.tx = d.x + rnd(-90,90); c.ty = d.y + rnd(-6,60);
+    } else {
+      // break: plaza or a random waypoint
+      if (Math.random()<0.5){ c.tx = PLAZA.x + rnd(-120,120); c.ty = PLAZA.y + rnd(-90,90); }
+      else { const w = choice(WP); c.tx = w.x+rnd(-40,40); c.ty = w.y+rnd(-40,40); }
+    }
+  }
+  c.tx = clamp(c.tx, 40, WORLD.w-40);
+  c.ty = clamp(c.ty, 40, WORLD.h-40);
+  c.state='walk';
+}
+
+function npcSpeak(c, txt, thought){
+  if (thought){ c.thought = txt; c.thoughtT = 3.2; }
+  else { c.bubble = txt; c.bubbleT = 3.6; }
+}
+
+let chatterCd = 4;
+function updateNPC(c, dt){
+  if (c.state==='idle'){
+    c.moving=false;
+    c.timer -= dt;
+    if (c.timer<=0){ pickDestination(c); }
+  } else if (c.state==='walk'){
+    const done = moveToward(c, c.tx, c.ty, dt);
+    if (done){
+      c.state='idle'; c.moving=false;
+      c.timer = c.role==='prof' ? rnd(3,6) : rnd(2.2,5.5);
+      // occasional idle thought
+      if (c.role==='student' && Math.random()<0.5) npcSpeak(c, choice(STUDENT_LINES), true);
+      if (c.role==='prof' && !isClassTime() && Math.random()<0.4) npcSpeak(c, choice(c.lines), false);
+    }
+  }
+  if (c.bubbleT>0){ c.bubbleT-=dt; if(c.bubbleT<=0) c.bubble=null; }
+  if (c.thoughtT>0){ c.thoughtT-=dt; if(c.thoughtT<=0) c.thought=null; }
+}
+
+/* Two nearby idle students exchange a line (autonomous chatter). LLM if enabled. */
+async function tryChatter(){
+  const idle = students.filter(s=>s.state==='idle' && !s.bubble);
+  for (let i=0;i<idle.length;i++){
+    for (let j=i+1;j<idle.length;j++){
+      const a=idle[i], b=idle[j];
+      if (dist(a.x,a.y,b.x,b.y) < 90){
+        if (state.ollama.enabled){
+          const line = await llmChat(
+            '너는 한국 물리치료학과 학생이야. 캠퍼스에서 친구에게 아주 짧게(20자 이내) 한 마디 건네. 이모지 금지.',
+            '지금 '+(isClassTime()?'수업 직전':'쉬는 시간')+'이야. 친구 '+b.name+'에게 짧게 말 걸어봐.'
+          );
+          npcSpeak(a, (line||choice(STUDENT_LINES)).slice(0,40), false);
+        } else {
+          npcSpeak(a, choice(STUDENT_LINES), false);
+        }
+        setTimeout(()=>npcSpeak(b, choice(['그러게 ㅋㅋ','맞아 맞아','헐 진짜?','나도나도','가자 가자']), false), 1200);
+        return;
+      }
+    }
+  }
+}
+
+/* ==========================================================================
+   OLLAMA (optional local LLM)
+   ========================================================================== */
+async function llmChat(sys, user){
+  return null; /* 게임판: 로컬 AI 미사용 (완전 오프라인) */
+  if (!state.ollama.enabled) return null;
+  try{
+    const ctl = new AbortController();
+    const to = setTimeout(()=>ctl.abort(), 12000);
+    const r = await fetch(state.ollama.url.replace(/\/+$/,'')+'/api/chat', {
+      method:'POST', headers:{'Content-Type':'application/json'}, signal:ctl.signal,
+      body: JSON.stringify({ model: state.ollama.model, stream:false,
+        messages:[{role:'system',content:sys},{role:'user',content:user}] })
+    });
+    clearTimeout(to);
+    if (!r.ok) return null;
+    const j = await r.json();
+    return (j && j.message && j.message.content) ? String(j.message.content).trim() : null;
+  }catch(e){ return null; }
+}
+async function ollamaTest(url, model){
+  try{
+    const ctl = new AbortController(); const to=setTimeout(()=>ctl.abort(),8000);
+    const r = await fetch(url.replace(/\/+$/,'')+'/api/tags',{signal:ctl.signal});
+    clearTimeout(to);
+    if(!r.ok) return {ok:false,msg:'서버 응답 오류 ('+r.status+')'};
+    const j = await r.json();
+    const models = (j.models||[]).map(m=>m.name);
+    const has = models.some(n=>n===model || n.startsWith(model));
+    return {ok:true, msg:'연결됨 ✓ 모델 '+models.length+'개'+(has?'':' · "'+model+'" 미발견(그래도 시도함)'), models};
+  }catch(e){ return {ok:false, msg:'연결 실패 — CORS/서버 확인 (OLLAMA_ORIGINS=*)'}; }
+}
+
+/* ==========================================================================
+   RENDER
+   ========================================================================== */
+function drawRoundRect(x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);
+  ctx.arcTo(x+w,y,x+w,y+h,r);
+  ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r);
+  ctx.arcTo(x,y,x+w,y,r);
+  ctx.closePath();
+}
+
+const FSER = "'Nanum Myeongjo','Batang',Georgia,serif";
+const FSAN = "'Malgun Gothic','Segoe UI',sans-serif";
+const ENTRANCE={x:990,y:1170}, BILLBOARD={x:830,y:980};
+const DECO=[{"x": 130, "y": 340}, {"x": 1880, "y": 340}, {"x": 130, "y": 760}, {"x": 1880, "y": 760}, {"x": 130, "y": 1130}, {"x": 1880, "y": 1130}, {"x": 40, "y": 540}, {"x": 1960, "y": 540}, {"x": 40, "y": 980}, {"x": 1960, "y": 980}];
+const LAMPS=[{"x": 300, "y": 350}, {"x": 650, "y": 350}, {"x": 1350, "y": 350}, {"x": 1700, "y": 350}, {"x": 300, "y": 750}, {"x": 650, "y": 750}, {"x": 1350, "y": 750}, {"x": 1700, "y": 750}];
+const BENCHES=[{"x": 880, "y": 300}, {"x": 1120, "y": 300}, {"x": 880, "y": 400}, {"x": 1120, "y": 400}];
+const FLOWERS=[{"x": 800, "y": 380}, {"x": 1200, "y": 380}, {"x": 920, "y": 290}, {"x": 1080, "y": 410}];
+const CREST_SVG="<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" viewBox=\"0 0 240 240\" role=\"img\" aria-label=\"안산대학교 물리치료학과 엠블럼\">\n<defs>\n<linearGradient id=\"au-gold\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#f0d488\"/><stop offset=\".5\" stop-color=\"#d4af52\"/><stop offset=\"1\" stop-color=\"#a9812c\"/></linearGradient>\n<radialGradient id=\"au-navy\" cx=\".5\" cy=\".38\" r=\".7\"><stop offset=\"0\" stop-color=\"#173a72\"/><stop offset=\"1\" stop-color=\"#0b224e\"/></radialGradient>\n<path id=\"au-ring\" d=\"M120,120 m-98,0 a98,98 0 1,1 196,0 a98,98 0 1,1 -196,0\"/>\n</defs>\n<circle cx=\"120\" cy=\"120\" r=\"117\" fill=\"url(#au-gold)\"/>\n<circle cx=\"120\" cy=\"120\" r=\"112\" fill=\"url(#au-navy)\"/>\n<circle cx=\"120\" cy=\"120\" r=\"86\" fill=\"#f6f2e7\"/>\n<circle cx=\"120\" cy=\"120\" r=\"86\" fill=\"none\" stroke=\"#c9a24b\" stroke-width=\"2.5\"/>\n<circle cx=\"120\" cy=\"120\" r=\"108\" fill=\"none\" stroke=\"#c9a24b\" stroke-width=\"1\"/>\n<text fill=\"#f4ead0\" font-family=\"Georgia,'Times New Roman',serif\" font-size=\"12.4\" font-weight=\"700\" letter-spacing=\"1.6\"><textPath xlink:href=\"#au-ring\" startOffset=\"1%\">ANSAN&#160;UNIVERSITY&#160;&#183;&#160;DEPARTMENT&#160;OF&#160;PHYSICAL&#160;THERAPY&#160;&#183;&#160;</textPath></text>\n<g fill=\"none\" stroke=\"url(#au-gold)\" stroke-width=\"4.4\" stroke-linecap=\"round\">\n<line x1=\"120\" y1=\"70\" x2=\"120\" y2=\"156\"/>\n<path d=\"M120,86 C103,96 103,109 120,119 C137,129 137,142 120,152\"/>\n<path d=\"M120,86 C137,96 137,109 120,119 C103,129 103,142 120,152\"/>\n</g>\n<circle cx=\"120\" cy=\"69\" r=\"6.2\" fill=\"url(#au-gold)\"/>\n<path d=\"M120,63 C107,55 92,58 86,70 C100,65 112,66 120,74 C128,66 140,65 154,70 C148,58 133,55 120,63Z\" fill=\"url(#au-gold)\"/>\n<g fill=\"#0e2a5e\">\n<circle cx=\"90\" cy=\"88\" r=\"9.5\"/><circle cx=\"150\" cy=\"88\" r=\"9.5\"/>\n<path d=\"M90,99 C71,107 67,131 82,144 C86,123 92,114 106,110 C99,106 94,103 90,99Z\"/>\n<path d=\"M150,99 C169,107 173,131 158,144 C154,123 148,114 134,110 C141,106 146,103 150,99Z\"/>\n</g>\n<g fill=\"#0e2a5e\">\n<path d=\"M98,150 C84,150 73,159 73,172 C89,179 107,178 120,169 C113,158 106,150 98,150Z\"/>\n<path d=\"M142,150 C156,150 167,159 167,172 C151,179 133,178 120,169 C127,158 134,150 142,150Z\"/>\n</g>\n<rect x=\"82\" y=\"176\" width=\"76\" height=\"19\" rx=\"9.5\" fill=\"#0e2a5e\" stroke=\"#c9a24b\" stroke-width=\"1.5\"/>\n<text x=\"120\" y=\"189.5\" fill=\"#eecb7f\" font-family=\"Georgia,serif\" font-size=\"11.5\" font-weight=\"700\" text-anchor=\"middle\" letter-spacing=\"1\">Since 1982</text>\n</svg>";
+const BANNER_SVG="<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1000 250\" role=\"img\" aria-label=\"제51회 물리치료사 국가고시 전국 수석 배출\">\n<defs><linearGradient id=\"bn\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#153b74\"/><stop offset=\"1\" stop-color=\"#0a1f47\"/></linearGradient>\n<linearGradient id=\"bg2\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#f2d888\"/><stop offset=\"1\" stop-color=\"#c69a3a\"/></linearGradient></defs>\n<rect x=\"5\" y=\"5\" width=\"990\" height=\"240\" rx=\"16\" fill=\"url(#bn)\"/>\n<rect x=\"16\" y=\"16\" width=\"968\" height=\"218\" rx=\"10\" fill=\"none\" stroke=\"url(#bg2)\" stroke-width=\"2.5\"/>\n<g fill=\"none\" stroke=\"url(#bg2)\" stroke-width=\"2\" opacity=\".8\">\n<path d=\"M60,140 q26,-34 66,-30 M70,168 q22,-30 58,-30 M84,190 q20,-24 50,-26\"/>\n<path d=\"M940,140 q-26,-34 -66,-30 M930,168 q-22,-30 -58,-30 M916,190 q-20,-24 -50,-26\"/></g>\n<text x=\"100\" y=\"158\" font-size=\"52\" font-weight=\"800\" text-anchor=\"middle\" fill=\"url(#bg2)\" font-family=\"'Nanum Myeongjo','Batang','Malgun Gothic',serif\">경</text>\n<text x=\"900\" y=\"158\" font-size=\"52\" font-weight=\"800\" text-anchor=\"middle\" fill=\"url(#bg2)\" font-family=\"'Nanum Myeongjo','Batang','Malgun Gothic',serif\">축</text>\n<circle cx=\"500\" cy=\"50\" r=\"19\" fill=\"url(#bg2)\"/><text x=\"500\" y=\"57\" font-size=\"18\" text-anchor=\"middle\" fill=\"#0a1f47\" font-weight=\"800\" font-family=\"'Nanum Myeongjo','Batang','Malgun Gothic',serif\">축</text>\n<path d=\"M470,44 l-20,-8 l6,14z M530,44 l20,-8 l-6,14z\" fill=\"url(#bg2)\"/>\n<text x=\"500\" y=\"125\" font-size=\"43\" font-weight=\"800\" text-anchor=\"middle\" fill=\"#f4ead0\" font-family=\"'Nanum Myeongjo','Batang','Malgun Gothic',serif\">제51회 물리치료사 국가고시</text>\n<text x=\"500\" y=\"180\" font-size=\"56\" font-weight=\"900\" text-anchor=\"middle\" fill=\"url(#bg2)\" font-family=\"'Nanum Myeongjo','Batang','Malgun Gothic',serif\">전국 수석 배출</text>\n<text x=\"500\" y=\"216\" font-size=\"22\" font-weight=\"700\" text-anchor=\"middle\" fill=\"#eecb7f\" font-family=\"'Nanum Myeongjo','Batang','Malgun Gothic',serif\" letter-spacing=\"8\">축 하 합 니 다</text>\n</svg>";
+const ASSET={crest:new Image(),banner:new Image()};
+ASSET.crest.src="data:image/svg+xml;charset=utf-8,"+encodeURIComponent(CREST_SVG);
+ASSET.banner.src="data:image/svg+xml;charset=utf-8,"+encodeURIComponent(BANNER_SVG);
+
+function drawGround(){
+  // grass base + tile
+  ctx.fillStyle='#24402c'; ctx.fillRect(0,0,WORLD.w,WORLD.h);
+  const T=48;
+  for(let y=0;y<WORLD.h;y+=T){for(let x=0;x<WORLD.w;x+=T){ctx.fillStyle=((x/T+y/T)&1)?'#284a30':'#244228';ctx.fillRect(x,y,T,T);}}
+  // stone avenues
+  const stone='#cabf9f';
+  ctx.fillStyle=stone;
+  HAVENUES.forEach(cy=>ctx.fillRect(56,cy-30,WORLD.w-112,60));
+  VAVENUES.forEach(cx=>ctx.fillRect(cx-30,86,60,WORLD.h-150));
+  // paving seams
+  ctx.strokeStyle='rgba(80,62,34,.22)';ctx.lineWidth=1;
+  HAVENUES.forEach(cy=>{for(let x=70;x<WORLD.w-70;x+=42){ctx.beginPath();ctx.moveTo(x,cy-30);ctx.lineTo(x,cy+30);ctx.stroke();}});
+  VAVENUES.forEach(cx=>{for(let y=100;y<WORLD.h-70;y+=42){ctx.beginPath();ctx.moveTo(cx-30,y);ctx.lineTo(cx+30,y);ctx.stroke();}});
+  // central quad plaza + fountain
+  ctx.fillStyle='#d9cdaf';ctx.beginPath();ctx.arc(PLAZA.x,PLAZA.y,100,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle='#0b224e';ctx.lineWidth=3;ctx.beginPath();ctx.arc(PLAZA.x,PLAZA.y,100,0,Math.PI*2);ctx.stroke();
+  ctx.strokeStyle='#b79a48';ctx.lineWidth=2;ctx.beginPath();ctx.arc(PLAZA.x,PLAZA.y,90,0,Math.PI*2);ctx.stroke();
+  if(ASSET.crest.complete && ASSET.crest.naturalWidth){ctx.save();ctx.globalAlpha=.8;var CS=46;ctx.drawImage(ASSET.crest,PLAZA.x-CS/2,PLAZA.y-80,CS,CS);ctx.restore();}
+  drawFountain(PLAZA.x,PLAZA.y+6);
+  // decor layers
+  FLOWERS.forEach(f=>drawFlowerbed(f.x,f.y));
+  BENCHES.forEach(b=>drawBench(b.x,b.y));
+  DECO.forEach(d=>drawTree(d.x,d.y));
+  LAMPS.forEach(l=>drawLamp(l.x,l.y));
+  drawEntrance(); drawBillboard();
+}
+
+function drawTree(x,y){
+  ctx.fillStyle='rgba(0,0,0,.26)';ctx.beginPath();ctx.ellipse(x,y+15,22,7,0,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#6b4a2a';ctx.fillRect(x-4,y,8,17);
+  ctx.fillStyle='#2c5738';ctx.beginPath();ctx.arc(x,y-8,21,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#356a43';ctx.beginPath();ctx.arc(x-9,y-3,14,0,Math.PI*2);ctx.arc(x+10,y-5,13,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#3f7c4e';ctx.beginPath();ctx.arc(x-3,y-13,10,0,Math.PI*2);ctx.fill();
+}
+function drawLamp(x,y){
+  ctx.fillStyle='rgba(0,0,0,.22)';ctx.beginPath();ctx.ellipse(x,y+2,6,2.6,0,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle='#0b224e';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x,y-32);ctx.stroke();
+  ctx.fillStyle='#c9a24b';ctx.fillRect(x-4,y-2,8,4);
+  ctx.save();ctx.globalAlpha=.28;ctx.fillStyle='#ffe9a8';ctx.beginPath();ctx.arc(x,y-34,13,0,Math.PI*2);ctx.fill();ctx.restore();
+  ctx.fillStyle='#f6d98a';ctx.beginPath();ctx.arc(x,y-34,5.2,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#0b224e';ctx.fillRect(x-3,y-40,6,6);
+}
+function drawBench(x,y){
+  ctx.fillStyle='rgba(0,0,0,.2)';ctx.fillRect(x-17,y+7,34,4);
+  ctx.fillStyle='#7a5a34';ctx.fillRect(x-17,y-2,34,6);
+  ctx.fillStyle='#664c2a';ctx.fillRect(x-17,y-11,34,4);
+  ctx.fillStyle='#5a4326';ctx.fillRect(x-14,y+4,4,9);ctx.fillRect(x+10,y+4,4,9);
+}
+function drawFlowerbed(x,y){
+  ctx.fillStyle='#3f3220';drawRoundRect(x-22,y-11,44,22,8);ctx.fill();
+  ctx.fillStyle='#2f5738';drawRoundRect(x-22,y-11,44,22,8);ctx.fill();
+  const cs=['#e86a8f','#f2cc55','#f4f0ff','#c98bd9','#ff9d5c'];
+  for(let i=0;i<9;i++){ctx.fillStyle=cs[i%cs.length];ctx.beginPath();ctx.arc(x-17+i*4.3,y-4+((i%2)?5:0),2.7,0,Math.PI*2);ctx.fill();}
+}
+function drawEntrance(){
+  const x=ENTRANCE.x,y=ENTRANCE.y;
+  ctx.fillStyle='rgba(0,0,0,.22)';ctx.fillRect(x-150,y+18,26,8);ctx.fillRect(x+124,y+18,26,8);
+  ctx.fillStyle='#0b224e';ctx.fillRect(x-150,y-72,26,92);ctx.fillRect(x+124,y-72,26,92);
+  ctx.fillStyle='#12306a';ctx.fillRect(x-150,y-72,7,92);ctx.fillRect(x+124,y-72,7,92);
+  ctx.fillStyle='#c9a24b';ctx.fillRect(x-155,y-80,36,11);ctx.fillRect(x+119,y-80,36,11);
+  ctx.fillStyle='#0a1a3a';drawRoundRect(x-152,y-100,304,30,7);ctx.fill();
+  ctx.strokeStyle='#c9a24b';ctx.lineWidth=2.4;drawRoundRect(x-152,y-100,304,30,7);ctx.stroke();
+  ctx.fillStyle='#f4ead0';ctx.font='bold 17px '+FSER;ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillText('안산대학교 물리치료학과',x,y-84);
+  ctx.fillStyle='#c9a24b';ctx.font='9px '+FSER;ctx.fillText('SINCE 1982',x,y-68);
+}
+function drawBillboard(){
+  const x=BILLBOARD.x,y=BILLBOARD.y,w=320,h=84;
+  ctx.fillStyle='rgba(0,0,0,.2)';ctx.fillRect(x-6,y+58,w+12,7);
+  ctx.fillStyle='#0b224e';ctx.fillRect(x-4,y,10,62);ctx.fillRect(x+w-6,y,10,62);
+  if(ASSET.banner.complete && ASSET.banner.naturalWidth){ctx.drawImage(ASSET.banner,x-8,y-h,w+16,h);}
+  else{ctx.fillStyle='#0a1f47';drawRoundRect(x-8,y-h,w+16,h,8);ctx.fill();}
+}
+
+function drawBuilding(b){
+  const gx=b.x,gy=b.y,gw=b.w,gh=b.h,dcx=gx+gw/2;
+  // ground shadow
+  ctx.fillStyle='rgba(0,0,0,.28)';drawRoundRect(gx+10,gy+gh-4,gw,24,12);ctx.fill();
+  // hedge in front
+  ctx.fillStyle='#2c5738';drawRoundRect(gx-8,gy+gh-12,gw+16,22,10);ctx.fill();
+  ctx.fillStyle='#356a43';for(let i=0;i<Math.floor(gw/17)+1;i++){ctx.beginPath();ctx.arc(gx+6+i*17,gy+gh-8,7,0,Math.PI*2);ctx.fill();}
+  // navy shell
+  ctx.fillStyle='#0c2151';drawRoundRect(gx,gy+20,gw,gh-20,9);ctx.fill();
+  // cream facade
+  ctx.fillStyle='#efe7d3';drawRoundRect(gx+11,gy+42,gw-22,gh-56,5);ctx.fill();
+  // subject pilasters
+  ctx.fillStyle=b.color;const nP=4;
+  for(let i=0;i<=nP;i++){const px=gx+13+i*(gw-26)/nP;ctx.fillRect(px-3,gy+46,6,gh-64);}
+  // warm windows between pilasters
+  for(let i=0;i<nP;i++){const seg=(gw-26)/nP;const wx=gx+13+i*seg+seg*0.26;const ww=seg*0.48;
+    ctx.fillStyle='#f6d98a';ctx.fillRect(wx,gy+84,ww,26);ctx.fillRect(wx,gy+118,ww,22);
+    ctx.strokeStyle='rgba(12,33,81,.5)';ctx.lineWidth=1;ctx.strokeRect(wx,gy+84,ww,26);ctx.strokeRect(wx,gy+118,ww,22);
+    ctx.beginPath();ctx.moveTo(wx+ww/2,gy+84);ctx.lineTo(wx+ww/2,gy+110);ctx.stroke();}
+  // gabled roof
+  ctx.fillStyle=b.roof;ctx.beginPath();ctx.moveTo(gx-8,gy+28);ctx.lineTo(dcx,gy-16);ctx.lineTo(gx+gw+8,gy+28);ctx.closePath();ctx.fill();
+  ctx.strokeStyle='#d4af52';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(gx-8,gy+28);ctx.lineTo(dcx,gy-16);ctx.lineTo(gx+gw+8,gy+28);ctx.stroke();
+  ctx.fillStyle='#0b1f47';ctx.fillRect(gx-8,gy+28,gw+16,12);
+  ctx.fillStyle='#d4af52';ctx.fillRect(gx-8,gy+40,gw+16,2.5);
+  // finial + pennant
+  ctx.strokeStyle='#c9a24b';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(dcx,gy-16);ctx.lineTo(dcx,gy-32);ctx.stroke();
+  ctx.fillStyle=b.color;ctx.beginPath();ctx.moveTo(dcx,gy-32);ctx.lineTo(dcx+16,gy-28);ctx.lineTo(dcx,gy-24);ctx.closePath();ctx.fill();
+  // entrance steps + door
+  ctx.fillStyle='#cdbf9c';ctx.fillRect(dcx-30,gy+gh-16,60,12);ctx.fillStyle='#c2b48c';ctx.fillRect(dcx-24,gy+gh-24,48,9);
+  ctx.fillStyle='#0b1f47';drawRoundRect(dcx-18,gy+gh-50,36,42,6);ctx.fill();
+  ctx.strokeStyle='#d4af52';ctx.lineWidth=2;drawRoundRect(dcx-18,gy+gh-50,36,42,6);ctx.stroke();
+  ctx.fillStyle='#f6d98a';ctx.beginPath();ctx.arc(dcx+9,gy+gh-29,2,0,Math.PI*2);ctx.fill();
+  // nameplate (navy + gold) on facade
+  ctx.fillStyle='#0a1a3a';drawRoundRect(dcx-98,gy+48,196,30,8);ctx.fill();
+  ctx.strokeStyle='#c9a24b';ctx.lineWidth=1.5;drawRoundRect(dcx-98,gy+48,196,30,8);ctx.stroke();
+  ctx.fillStyle='#f4ead0';ctx.font='bold 15px '+FSER;ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillText(b.emoji+' '+b.name,dcx,gy+63);
+  // visited seal
+  if(b.subj && state.visited.has(b.subj)){
+    ctx.fillStyle='#d4af52';ctx.beginPath();ctx.arc(gx+gw-15,gy+56,12,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle='#f0d488';ctx.lineWidth=1.5;ctx.stroke();
+    ctx.fillStyle='#0a1a3a';ctx.font='bold 14px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('✓',gx+gw-15,gy+57);
+  }
+}
+
+function drawChar(c){
+  const bob=c.moving?Math.sin(c.walk)*2:0;const x=c.x,y=c.y+bob;const isProf=c.role==='prof';
+  if(c.isPlayer){var _pa=performance.now()/380,_r=21+Math.sin(_pa)*3;ctx.save();var _g=ctx.createRadialGradient(x,y-2,3,x,y-2,_r);_g.addColorStop(0,'rgba(79,209,197,0)');_g.addColorStop(.5,'rgba(79,209,197,.42)');_g.addColorStop(1,'rgba(79,209,197,0)');ctx.fillStyle=_g;ctx.beginPath();ctx.arc(x,y-2,_r,0,Math.PI*2);ctx.fill();ctx.strokeStyle='rgba(240,212,136,'+(0.6+Math.sin(_pa)*0.25).toFixed(2)+')';ctx.lineWidth=2.6;ctx.beginPath();ctx.arc(x,y-2,_r,0,Math.PI*2);ctx.stroke();ctx.restore();}
+  ctx.fillStyle='rgba(0,0,0,.26)';ctx.beginPath();ctx.ellipse(c.x,c.y+15,12,4.6,0,0,Math.PI*2);ctx.fill();
+  const swing=c.moving?Math.sin(c.walk)*3:0;
+  ctx.fillStyle='#26304a';ctx.fillRect(x-6,y+4,4,10+swing);ctx.fillRect(x+2,y+4,4,10-swing);
+  // body
+  ctx.fillStyle=isProf?'#0f2350':c.color;drawRoundRect(x-9,y-8,18,17,5);ctx.fill();
+  if(isProf){ctx.fillStyle=c.color;ctx.fillRect(x-9,y-8,18,4);ctx.fillStyle='#d4af52';ctx.fillRect(x-2,y-8,4,17);}
+  if(c.isPlayer){ctx.strokeStyle='#f0d488';ctx.lineWidth=1.6;drawRoundRect(x-9,y-8,18,17,5);ctx.stroke();}
+  if(c.sex==='f'){ctx.fillStyle=isProf?'#33406a':c.color;ctx.beginPath();ctx.moveTo(x-9,y+3);ctx.lineTo(x+9,y+3);ctx.lineTo(x+12,y+11);ctx.lineTo(x-12,y+11);ctx.closePath();ctx.fill();}
+  // head
+  ctx.fillStyle=c.skin||'#f0c9a8';ctx.beginPath();ctx.arc(x,y-16,8,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle=c.hair;
+  if(c.dir==='up'){ctx.beginPath();ctx.arc(x,y-16,8,0,Math.PI*2);ctx.fill();}
+  else{ctx.beginPath();ctx.arc(x,y-19,8,Math.PI,Math.PI*2);ctx.fill();ctx.fillRect(x-8,y-19,16,4);}
+  if(c.sex==='f'&&c.dir!=='up'){ctx.fillStyle=c.hair;ctx.fillRect(x-8,y-19,3,13);ctx.fillRect(x+5,y-19,3,13);}
+  if(c.dir!=='up'){ctx.fillStyle='#20242c';const ex=c.dir==='left'?-3:(c.dir==='right'?3:0);ctx.fillRect(x-3+ex*0.4,y-16,2,2);ctx.fillRect(x+2+ex*0.4,y-16,2,2);}
+  if(isProf){ctx.font='11px sans-serif';ctx.textAlign='center';ctx.fillText('🎓',x,y-30);}
+  // nameplate
+  ctx.textAlign='center';ctx.textBaseline='middle';
+  const nm=c.name;const sub=isProf?(SUBJ_NAME[c.subj]||''):'';
+  ctx.font='bold 10px '+FSAN;const w1=ctx.measureText(nm).width;
+  ctx.font='9px '+FSAN;const w2=sub?ctx.measureText(sub).width:0;
+  const nw=Math.max(w1,w2)+14,nh=sub?25:15;
+  ctx.fillStyle=isProf?'rgba(10,22,54,.94)':(c.isPlayer?'rgba(38,26,6,.92)':'rgba(8,14,30,.82)');
+  drawRoundRect(x-nw/2,y+16,nw,nh,6);ctx.fill();
+  if(isProf||c.isPlayer){ctx.strokeStyle='#c9a24b';ctx.lineWidth=1;drawRoundRect(x-nw/2,y+16,nw,nh,6);ctx.stroke();}
+  ctx.fillStyle=isProf?'#f4ead0':(c.isPlayer?'#ffe4a0':'#dbe6ff');
+  ctx.font='bold 10px '+FSAN;ctx.fillText(nm,x,y+24);
+  if(sub){ctx.fillStyle='#d4af52';ctx.font='9px '+FSAN;ctx.fillText(sub,x,y+35);}
+  if(c.bubble)drawBubble(x,y-34,c.bubble,false,isProf?'#d4af52':c.color);
+  else if(c.thought)drawBubble(x,y-34,c.thought,true,'#8aa0c8');
+  if(c.isPlayer&&!c.bubble&&!c.thought){var _b=Math.sin(performance.now()/300)*3;ctx.fillStyle='#f0d488';ctx.strokeStyle='#0a1a3a';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(x-7,y-43+_b);ctx.lineTo(x+7,y-43+_b);ctx.lineTo(x,y-33+_b);ctx.closePath();ctx.fill();ctx.stroke();}
+}
+
+function drawBubble(x, y, text, thought, col){
+  ctx.font='11px "Malgun Gothic",sans-serif'; ctx.textAlign='left'; ctx.textBaseline='middle';
+  const t = text.length>22 ? text.slice(0,21)+'…' : text;
+  const w = ctx.measureText(t).width + 16, h=20;
+  const bx = x-w/2, by = y-h;
+  ctx.fillStyle = thought ? 'rgba(20,26,38,.92)' : 'rgba(10,13,20,.95)';
+  ctx.strokeStyle = col; ctx.lineWidth=1.2;
+  drawRoundRect(bx,by,w,h,thought?10:7); ctx.fill(); ctx.stroke();
+  if (thought){
+    ctx.beginPath(); ctx.arc(x-4,y+3,2.4,0,Math.PI*2); ctx.arc(x,y+8,1.6,0,Math.PI*2); ctx.fill(); ctx.stroke();
+  } else {
+    ctx.beginPath(); ctx.moveTo(x-5,y-1); ctx.lineTo(x,y+5); ctx.lineTo(x+5,y-1); ctx.closePath();
+    ctx.fillStyle='rgba(10,13,20,.95)'; ctx.fill();
+  }
+  ctx.fillStyle = thought ? '#b9c7e6' : '#eaf1ff';
+  ctx.fillText(t, bx+8, by+h/2);
+}
+
+function render(){
+  ctx.clearRect(0,0,VW,VH);
+  ctx.save();
+  if(state.overview){ var _sc=Math.min(VW/WORLD.w, VH/WORLD.h)*0.98; ctx.translate((VW-WORLD.w*_sc)/2,(VH-WORLD.h*_sc)/2); ctx.scale(_sc,_sc); }
+  else { ctx.translate(-cam.x, -cam.y); }
+  drawGround();
+  BUILDINGS.forEach(drawBuilding);
+  funDrawProps();
+  // entities sorted by y (painter's)
+  const ents = allChars.slice().sort((a,b)=>a.y-b.y);
+  ents.forEach(drawChar);
+  funDrawTop();
+  // interaction ring
+  if (state.near && !state.spectate){
+    const p = state.near.type==='building' ? doorOf(state.near.ref) : state.near.ref;
+    ctx.strokeStyle='rgba(79,209,197,.9)'; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc(p.x, p.y, 24, 0, Math.PI*2); ctx.stroke();
+  }
+  ctx.restore();
+  funNightOverlay();
+}
+
+/* ==========================================================================
+   INTERACTION
+   ========================================================================== */
+function updateNear(){
+  if (state.spectate){ state.near=null; hidePrompt(); return; }
+  let best=null, bestD=70;
+  // professors
+  professors.forEach(p=>{ const d=dist(player.x,player.y,p.x,p.y); if(d<bestD){bestD=d;best={type:'prof',ref:p};} });
+  // building doors
+  BUILDINGS.forEach(b=>{ if(!b.subj && !b.role) return; const dr=doorOf(b); const d=dist(player.x,player.y,dr.x,dr.y); if(d<bestD){bestD=d;best={type: b.subj ? 'building' : b.role, ref:b};} });
+  // hub door (social)
+  if(typeof staff!=='undefined'){ staff.forEach(p=>{ const d=dist(player.x,player.y,p.x,p.y); if(d<bestD){bestD=d;best={type:'staff',ref:p};} }); }
+  if(!best) best = funNearCheck();
+  state.near = best;
+  if (best){
+    let label;
+    if (best.type==='prof') label = best.ref.name+' 와(과) 대화';
+    else if (best.type==='building') label = best.ref.name+' 강의 듣기';
+    else if (best.type==='hub') label = '학생회관 둘러보기';
+    else if (best.type==='cafe') label = '☕ 커피 한 잔 — 스피드 UP';
+    else if (best.type==='stage') label = '🔔 골든벨 퀴즈 러시!';
+    else if (best.type==='pet') label = '🐈 냥이 쓰다듬기';
+    else if (best.type==='office') label = '🏢 학과사무실 (조교)';
+    else if (best.type==='club') label = '🎽 전공동아리방';
+    else if (best.type==='council') label = '📣 물치 학회실';
+    else if (best.type==='career') label = '💼 대학일자리플러스센터';
+    else if (best.type==='gate') label = '🏫 학과 안내·홍보 (입구)';
+    else if (best.type==='staff') label = best.ref.name+' 와(과) 대화';
+    else label = '둘러보기';
+    showPrompt(label);
+  } else hidePrompt();
+}
+function showPrompt(label){ const el=document.getElementById('prompt'); el.innerHTML='<span class="kbd">E</span> '+label; el.style.display='flex'; }
+function hidePrompt(){ document.getElementById('prompt').style.display='none'; }
+
+function tryInteract(){
+  if (!state.near) return;
+  const n = state.near;
+  if (n.type==='prof') openProf(n.ref);
+  else if (n.type==='building') openHall(n.ref);
+  else if (n.type==='hub') openHub();
+  else if (n.type==='cafe') funCafe();
+  else if (n.type==='stage') gbStart();
+  else if (n.type==='pet') funPet();
+  else if (n.type==='office') openOffice();
+  else if (n.type==='club') openClub();
+  else if (n.type==='council') openCouncil();
+  else if (n.type==='career') openCareer();
+  else if (n.type==='gate') openWelcome();
+  else if (n.type==='staff') openStaff(n.ref);
+}
+
+/* --- Dialog engine --- */
+function setDialog(badge, badgeColor, name, sub){
+  document.getElementById('dlg-badge').textContent = badge;
+  document.getElementById('dlg-badge').style.background = badgeColor;
+  document.getElementById('dlg-name').textContent = name;
+  document.getElementById('dlg-sub').textContent = sub;
+}
+function showDialog(){ document.getElementById('dlg').classList.add('show'); }
+function closeDialog(){ document.getElementById('dlg').classList.remove('show'); quizCtx=null; gb=null; }
+
+let quizCtx = null;
+
+function openProf(p){
+  try{ state.talkedNpcs.add(p.name); achCheck(); }catch(e){}
+  setDialog('🧑‍🏫', 'linear-gradient(135deg,'+p.color+',#3a465f)', p.name, SUBJ_NAME[p.subj]+' 담당 교수');
+  const body = document.getElementById('dlg-body');
+  const foot = document.getElementById('dlg-foot');
+  body.innerHTML = '<div class="say"><span class="who">'+p.name+'</span>'+choice(p.lines)+'</div>'+
+    '<div class="say" style="border-style:dashed">무엇을 도와줄까요? 강의 요약을 듣거나, 바로 퀴즈에 도전해보세요.</div>';
+  foot.innerHTML='';
+  addFoot('📖 강의 요약 듣기', ()=>lectureSummary(p.subj, p.name));
+  addFoot('📝 '+SUBJ_NAME[p.subj]+' 퀴즈', ()=>startQuiz(p.subj, p.name), true);
+  if (state.ollama.enabled) addFoot('💬 질문하기(LLM)', ()=>askProf(p));
+  addFoot('닫기', closeDialog);
+  showDialog();
+}
+
+function openHall(b){
+  const p = professors.find(x=>x.subj===b.subj);
+  setDialog(b.emoji, 'linear-gradient(135deg,'+b.color+',#2a3550)', b.name, SUBJ_NAME[b.subj]+' · 강의관');
+  const body=document.getElementById('dlg-body'); const foot=document.getElementById('dlg-foot');
+  body.innerHTML='<div class="say"><span class="who">'+b.name+'</span>'+b.name+'에 입장했습니다. 오늘 과목은 <b>'+SUBJ_NAME[b.subj]+'</b>. 강의를 듣거나 퀴즈로 학점을 쌓으세요.</div>'+jobLink('📘 학과 교육과정·로드맵','https://physi.ansan.ac.kr/physi/roadmap',false);
+  foot.innerHTML='';
+  addFoot('📖 강의 요약', ()=>lectureSummary(b.subj, p?p.name:b.name));
+  addFoot('📝 퀴즈 시작', ()=>startQuiz(b.subj, p?p.name:b.name), true);
+  addFoot('닫기', closeDialog);
+  showDialog();
+}
+
+function openHub(){
+  setDialog('📚','linear-gradient(135deg,#4a8f5a,#2a3550)','학생회관·도서관','자율 AI들의 휴식·잡담 공간');
+  const body=document.getElementById('dlg-body'); const foot=document.getElementById('dlg-foot');
+  const around = students.filter(s=>dist(s.x,s.y,player.x,player.y)<260).map(s=>s.name);
+  body.innerHTML='<div class="say"><span class="who">안내</span>여기는 AI 학생들이 쉬는 시간에 모여 잡담하는 곳입니다. 지금 근처 학생: <b>'+(around.length?around.join(', '):'없음')+'</b><br><br>가만히 관전하면 AI들이 스스로 대화하는 모습을 볼 수 있어요(👁️ 관전 모드 추천).</div>'+jobLink('📰 학과뉴스','https://physi.ansan.ac.kr/physi/board/3',false)+jobLink('📷 포토갤러리','https://physi.ansan.ac.kr/physi/board/7',false);
+  foot.innerHTML='';
+  addFoot('👁️ 관전 모드 켜기', ()=>{ toggleSpectate(true); closeDialog(); });
+  addFoot('닫기', closeDialog);
+  showDialog();
+}
+
+function addFoot(label, fn, primary){
+  const b=document.createElement('button');
+  b.className='btn'+(primary?' primary':''); b.textContent=label; b.onclick=fn;
+  document.getElementById('dlg-foot').appendChild(b);
+}
+
+/* --- Lecture summaries (offline; LLM-enhanced if enabled) --- */
+const LECTURE = {"anatomy": "해부학은 인체의 뼈·근육·관절·신경을 구조로 이해하는 과목입니다. 핵심은 “이름이 곧 기능” — 회전근개(SITS: 극상·극하·소원·견갑하근)는 어깨의 동적 안정자입니다. (안산대 물리치료학과 · 김신영 교수 담당: 해부학및실습·운동생리학)", "neuroanat": "신경해부학·신경과학은 뉴런·시냅스에서 감각·운동 경로, 소뇌·바닥핵, 뇌신경, 뇌줄기, 자율신경, 통증까지 “구조가 곧 기능”으로 잇습니다. 핵심 감별은 UMN(반대쪽·경직·과반사) vs LMN(같은쪽·이완·위축), 신경로 교차 위치입니다. (안산대 물리치료학과 · 정형국 교수 담당: 신경해부학·임상운동학 · 콘텐츠는 심경섭 「신경해부학 강의록·시험문항」 기반)", "neuro": "신경계물리치료는 뇌졸중·파킨슨·소뇌실조·ALS·SCI·MS·GBS 등 신경계 손상 환자의 회복을 다룹니다. 최신 근거는 과제지향 훈련·충분한 반복량·치료 강도를 우선합니다. (안산대 물리치료학과 · 심경섭 교수 담당: 신경계물리치료중재학·지역사회물리치료학 · 「NeuroPT-3」 국시 정리 기반)", "exercise": "운동치료학은 ROM·근력·지구력·협응을 회복시키는 치료적 운동을 설계합니다. MMT로 근력을 0~5로 등급화하며 3등급(중력 대항 full ROM)이 임상 기준입니다. 등척·구심·원심 수축과 PNF를 상황에 맞게 적용합니다. (안산대 물리치료학과 · 신호진 교수 담당: 운동치료학·인체생리학)", "funcanat": "기능해부·신경계운동치료는 움직임의 해부학적 기반과 신경계 운동 재교육을 다룹니다. 운동단위·크기원리·운동학습 단계(인지-연합-자율)·견갑상완리듬·닫힌/열린사슬·보행주기 같은 기능적 원리를 임상 운동치료로 연결합니다. (안산대 물리치료학과 · 김도현 학과장 담당: 신경계운동치료실습·기능해부학 및 실습)", "msk": "근골격계·정형물리치료는 요통·회전근개·오십견·염좌 등 정형 질환을 평가·치료합니다. 특수검사(SLR, Lachman, McMurray, Cozen 등)로 구조적 병변을 감별하고 도수치료·운동·교육으로 통증과 기능을 관리합니다. (안산대 물리치료학과 · 정호발 교수 담당: 정형물리치료실습·근골격계운동치료실습)", "modality": "물리적인자치료는 열·냉·전기·초음파·광선 등 물리적 에너지를 활용합니다. 급성기엔 한랭(혈관수축·부종감소), 만성기엔 온열(혈류·유연성↑). TENS 진통은 관문조절설로, 초음파 열 효과는 지속파로 극대화됩니다. (안산대 물리치료학과 · 김동훈 교수 담당: 물리적인자치료실습·근거중심신경계물리치료학)", "cardio": "심화호흡(심장호흡)물리치료는 가슴우리·호흡근·환기/관류에서 폐렴·COPD 등 호흡질환과 호흡재활을 다룹니다. 정상 안정 호흡수 12~20회/분, 바깥호흡=허파꽈리–모세혈관 가스교환. 가로막호흡·IMT·강화폐활량호흡·오므린 입술호흡·체위배출법으로 분비물 배출·환기를 개선합니다. (안산대 물리치료학과 · 심경섭 교수 담당: 심화호흡물리치료학 · 「심장호흡물리치료 2판」 기반)", "clindx": "임상의사결정·물리치료진단은 환자의 주관적·객관적 정보를 수집·해석해 ‘움직임 문제’를 규정하고(ICF 틀), 근거기반(EBP: 연구근거+임상전문성+환자가치)으로 목표·중재를 정한 뒤 재평가로 순환하는 임상추론 과정입니다. SOAP 기록과 가설연역적 추론이 핵심 도구입니다. (안산대 물리치료학과 · 이광재 교수 담당: 물리치료진단학·물리치료진단실습·임상의사결정)"};
+async function lectureSummary(subj, who){
+  const body=document.getElementById('dlg-body'); const foot=document.getElementById('dlg-foot');
+  body.innerHTML='<div class="say"><span class="who">'+who+'</span>'+LECTURE[subj]+'</div>'+
+    '<div class="expl"><span class="tag">사실</span>물리치료 표준 교과서 수준의 확립된 내용입니다.</div>';
+  foot.innerHTML='';
+  addFoot('📝 이 과목 퀴즈 풀기', ()=>startQuiz(subj, who), true);
+  addFoot('닫기', closeDialog);
+  if (state.ollama.enabled){
+    const p=document.createElement('div'); p.className='say'; p.style.opacity=.7;
+    p.innerHTML='<span class="who">🧠 '+who+' (LLM 생성 중…)</span>…'; body.appendChild(p);
+    const extra = await llmChat('너는 한국 물리치료학과 교수다. 아래 주제를 학생에게 3문장 이내로 쉽게 보충 설명하라. 과장·환각 금지, 확립된 내용만.',
+      SUBJ_NAME[subj]+' 핵심을 한 가지만 더 짚어줘.');
+    if (extra) p.innerHTML='<span class="who">🧠 '+who+'</span>'+extra; else p.remove();
+  }
+}
+async function askProf(p){
+  const body=document.getElementById('dlg-body');
+  body.innerHTML='<div class="field"><label>'+p.name+'에게 질문 ('+SUBJ_NAME[p.subj]+')</label><input id="qin" placeholder="예: 오십견과 회전근개 파열 어떻게 구분해요?"/></div><div id="ans" class="say" style="display:none"></div>';
+  const foot=document.getElementById('dlg-foot'); foot.innerHTML='';
+  addFoot('질문 보내기', async ()=>{
+    const q=document.getElementById('qin').value.trim(); if(!q) return;
+    const ans=document.getElementById('ans'); ans.style.display='block';
+    ans.innerHTML='<span class="who">'+p.name+'</span>생각 중…';
+    const r=await llmChat('너는 한국 '+SUBJ_NAME[p.subj]+' 담당 물리치료학과 교수다. 학생 질문에 정확하고 간결하게(4문장 이내) 답하라. 모르면 모른다고 하라. 환각 금지.', q);
+    ans.innerHTML='<span class="who">'+p.name+'</span>'+(r||'지금은 답변 엔진에 연결이 안 되네요. AI 엔진 연결을 확인해 주세요.');
+  }, true);
+  addFoot('뒤로', ()=>openProf(p));
+  addFoot('닫기', closeDialog);
+}
+
+/* --- Quiz --- */
+function startQuiz(subj, who){
+  const bank = QUIZ[subj];
+  quizCtx = { subj, who, order: shuffle([...Array(bank.length).keys()]).slice(0, Math.min(6, bank.length)), i:0, gotFirstTry:0 };
+  renderQuestion();
+}
+function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
+function renderQuestion(){
+  const {subj, who, order, i} = quizCtx;
+  const qi = order[i]; const item = QUIZ[subj][qi];
+  setDialog('📝','linear-gradient(135deg,#7c9cff,#4fd1c5)', SUBJ_NAME[subj]+' 퀴즈', who+' 출제 · '+(i+1)+'/'+order.length);
+  const body=document.getElementById('dlg-body'); const foot=document.getElementById('dlg-foot');
+  let html='<div class="qmeta"><span>문항 '+(i+1)+' / '+order.length+'</span><span>정답 시 +10점</span></div>';
+  html+='<div class="say" style="font-weight:600">'+item.q+'</div>';
+  html+='<div id="opts">';
+  item.o.forEach((op,idx)=>{ html+='<button class="opt" data-idx="'+idx+'"><span class="num">'+(idx+1)+'</span><span>'+op+'</span></button>'; });
+  html+='</div>';
+  body.innerHTML=html; foot.innerHTML='';
+  body.querySelectorAll('.opt').forEach(btn=>{
+    btn.onclick=()=>answer(parseInt(btn.dataset.idx,10));
+  });
+}
+function answer(idx){
+  const {subj, order, i} = quizCtx;
+  const item = QUIZ[subj][order[i]];
+  const correct = item.a;
+  const opts = document.querySelectorAll('#opts .opt');
+  opts.forEach((b,k)=>{ b.disabled=true; if(k===correct) b.classList.add('correct'); if(k===idx&&idx!==correct) b.classList.add('wrong'); });
+  const first = (quizCtx['ans_'+i]===undefined);
+  quizCtx['ans_'+i]=idx;
+  if (idx===correct){
+    if (first){ state.score+=10; state.correct+=1; quizCtx.gotFirstTry++; toast('정답! +10점 🎉'); }
+    else toast('정답입니다 ✓');
+  } else { toast('오답 — 해설을 확인하세요'); }
+  const body=document.getElementById('dlg-body');
+  const ex=document.createElement('div'); ex.className='expl';
+  ex.innerHTML='<span class="tag">해설</span>'+item.e;
+  body.appendChild(ex);
+  const foot=document.getElementById('dlg-foot'); foot.innerHTML='';
+  if (idx!==correct) addFoot('🔁 다시 선택', ()=>renderQuestion());
+  if (i < order.length-1) addFoot('다음 문항 →', ()=>{ quizCtx.i++; renderQuestion(); }, true);
+  else addFoot('결과 보기 🏁', ()=>finishQuiz(), true);
+  addFoot('그만두기', closeDialog);
+  updateHUD();
+}
+function finishQuiz(){
+  const {subj, who, order, gotFirstTry} = quizCtx;
+  if (gotFirstTry>0 || true) state.visited.add(subj);
+  const pct = Math.round(gotFirstTry/order.length*100);
+  setDialog('🏁','linear-gradient(135deg,#ffd166,#4fd1c5)', SUBJ_NAME[subj]+' 이수 결과', who+' 출제');
+  const body=document.getElementById('dlg-body'); const foot=document.getElementById('dlg-foot');
+  let grade = pct>=90?'A+':pct>=80?'A':pct>=70?'B+':pct>=60?'B':pct>=40?'C':'D';
+  body.innerHTML='<div class="say" style="text-align:center;font-size:16px"><span class="who" style="text-align:center;display:block">수고했어요!</span>'+
+    '첫 시도 정답 <b style="color:var(--gold)">'+gotFirstTry+' / '+order.length+'</b> · 성취도 <b>'+pct+'%</b><br><br>'+
+    '<span style="font-size:30px">🎓</span><br>이번 강의 학점: <b style="color:var(--accent);font-size:22px">'+grade+'</b></div>'+
+    '<div class="expl"><span class="tag">기록</span>'+SUBJ_NAME[subj]+' 강의관을 이수 처리했습니다. 9개 강의관을 모두 이수해보세요!</div>';
+  foot.innerHTML='';
+  addFoot('다른 강의관 가기', closeDialog, true);
+  updateHUD();
+  checkAllVisited();
+}
+function checkAllVisited(){
+  try{ achCheck(); }catch(e){}
+  if (state.visited.size>=9){
+    setQuest('🏆 축하합니다! 9개 강의관을 모두 이수했어요. 총 '+state.score+'점!');
+    toast('🏆 전 과목 이수 완료!');
+  } else {
+    setQuest('강의관 '+state.visited.size+'/9 이수 — 남은 과목을 찾아가세요');
+  }
+}
+
+/* ==========================================================================
+   HUD / helpers
+   ========================================================================== */
+function updateHUD(){
+  document.getElementById('score').textContent = state.score;
+  document.getElementById('correct').textContent = state.correct;
+  document.getElementById('visited').textContent = state.visited.size;
+  document.getElementById('clock-txt').textContent = clockStr();
+  document.getElementById('period').textContent = isClassTime()?'· 수업중':'· 쉬는시간';
+}
+function setQuest(t){ document.getElementById('quest-txt').textContent = t; }
+function toast(msg){
+  const wrap=document.getElementById('toast');
+  const el=document.createElement('div'); el.className='toast'; el.textContent=msg;
+  wrap.appendChild(el);
+  setTimeout(()=>{ el.style.opacity='0'; el.style.transition='opacity .4s'; setTimeout(()=>el.remove(),400); }, 1800);
+}
+function isShown(id){ return document.getElementById(id).classList.contains('show'); }
+function anyModalOpen(){ return isShown('dlg')||isShown('ollama')||isShown('help')||isShown('intro')||isShown('ach'); }
+function hideEl(id){ document.getElementById(id).classList.remove('show'); }
+
+/* ==========================================================================
+   TOP BAR wiring
+   ========================================================================== */
+document.getElementById('startBtn').onclick = ()=>{ hideEl('intro'); state.entered=true; document.body.classList.add('playing'); setQuest('아무 강의관에나 들어가 교수님과 대화해보세요'); };
+document.getElementById('helpBtn').onclick = ()=>document.getElementById('help').classList.add('show');
+document.getElementById('ollamaBtn').onclick = ()=>document.getElementById('ollama').classList.add('show');
+function closeOllama(){ hideEl('ollama'); }
+
+document.getElementById('spectateBtn').onclick = ()=>toggleSpectate();
+function toggleSpectate(force){
+  state.spectate = (force===undefined) ? !state.spectate : force;
+  const b=document.getElementById('spectateBtn');
+  b.classList.toggle('on', state.spectate);
+  b.textContent = state.spectate?'👁️ 관전 ON':'👁️ 관전';
+  if (state.spectate){ toast('관전 모드 — AI들을 순회합니다'); state.spectateTimer=0; }
+  else toast('조작 모드로 복귀');
+}
+
+const SPEEDS=[1,2,4,8];
+document.getElementById('fastBtn').onclick = ()=>{
+  const i=(SPEEDS.indexOf(state.timeScale)+1)%SPEEDS.length;
+  state.timeScale=SPEEDS[i];
+  document.getElementById('fastBtn').textContent='⏩ '+state.timeScale+'×';
+};
+
+/* Ollama modal buttons */
+document.getElementById('ol-test').onclick = async ()=>{
+  const url=document.getElementById('ol-url').value.trim();
+  const model=document.getElementById('ol-model').value.trim();
+  const dot=document.getElementById('ol-dot'), msg=document.getElementById('ol-msg');
+  msg.textContent='테스트 중…'; dot.className='status-dot';
+  const r=await ollamaTest(url,model);
+  dot.className='status-dot '+(r.ok?'ok':'bad'); msg.textContent=r.msg;
+};
+document.getElementById('ol-save').onclick = async ()=>{
+  const url=document.getElementById('ol-url').value.trim();
+  const model=document.getElementById('ol-model').value.trim();
+  const dot=document.getElementById('ol-dot'), msg=document.getElementById('ol-msg');
+  msg.textContent='연결 확인 중…'; dot.className='status-dot';
+  const r=await ollamaTest(url,model);
+  if (r.ok){
+    state.ollama={ enabled:true, url, model, ok:true };
+    dot.className='status-dot ok'; msg.textContent='활성화됨 ✓ NPC가 이제 LLM으로 대화합니다';
+    document.getElementById('ollamaBtn').classList.add('on');
+    toast('🧠 로컬 LLM 연결됨: '+model);
+    setTimeout(closeOllama, 900);
+  } else {
+    state.ollama.enabled=false;
+    dot.className='status-dot bad'; msg.textContent=r.msg+' — 오프라인 AI로 계속 동작합니다';
+  }
+};
+
+/* ==========================================================================
+   MAIN LOOP
+   ========================================================================== */
+let last=performance.now();
+function loop(now){
+  let dt=(now-last)/1000; last=now; if(dt>0.05) dt=0.05; if(dt<0) dt=0;
+
+  // clock advances (faster during spectate / timeScale)
+  if (state.entered){
+    state.clock += dt * (0.35*state.timeScale) ; // ~ real minutes; 0.35 min/s baseline
+    if (state.clock>=24*60) state.clock-=24*60;
+  }
+
+  // player movement (blocked while modal open or spectating)
+  const canMove = state.entered && !anyModalOpen() && !state.spectate;
+  player.moving=false;
+  if (canMove){
+    let vx=0, vy=0;
+    if (keys['arrowleft']||keys['a']||keys['ㅁ']) vx-=1;
+    if (keys['arrowright']||keys['d']||keys['ㅇ']) vx+=1;
+    if (keys['arrowup']||keys['w']||keys['ㅈ']) vy-=1;
+    if (keys['arrowdown']||keys['s']||keys['ㄴ']) vy+=1;
+    { const tv=window.touchVec; if(tv){ vx+=tv.x; vy+=tv.y; } }
+    if (vx||vy){
+      const m=Math.hypot(vx,vy)||1; vx/=m; vy/=m;
+      const nx=clamp(player.x+vx*playerSpd()*dt, 20, WORLD.w-20);
+      const ny=clamp(player.y+vy*playerSpd()*dt, 20, WORLD.h-20);
+      if(!collidesBuilding(nx,player.y)) player.x=nx;
+      if(!collidesBuilding(player.x,ny)) player.y=ny;
+      player.moving=true; player.walk+=dt*12;
+      player.dir = Math.abs(vx)>Math.abs(vy) ? (vx>0?'right':'left') : (vy>0?'down':'up');
+    }
+  }
+
+  // NPC AI
+  npcs.forEach(c=>updateNPC(c,dt*(state.timeScale||1)));
+  funTick(dt);
+  chatterCd -= dt;
+  if (chatterCd<=0){ chatterCd = rnd(9,15); tryChatter(); }
+
+  // camera
+  let focus = player;
+  if (state.spectate){
+    state.spectateTimer -= dt;
+    if (!state.spectateTarget || state.spectateTimer<=0){
+      state.spectateTarget = choice(npcs); state.spectateTimer = rnd(5,8);
+    }
+    focus = state.spectateTarget;
+  }
+  const tcx = clamp(focus.x - VW/2, 0, Math.max(0,WORLD.w-VW));
+  const tcy = clamp(focus.y - VH/2, 0, Math.max(0,WORLD.h-VH));
+  cam.x += (tcx-cam.x)*Math.min(1, dt*6);
+  cam.y += (tcy-cam.y)*Math.min(1, dt*6);
+
+  updateNear();
+  updateHUD();
+  render();
+  requestAnimationFrame(loop);
+}
+
+function collidesBuilding(x,y){
+  for (const b of BUILDINGS){
+    if (x> b.x-8 && x< b.x+b.w+8 && y> b.y-6 && y< b.y+b.h-6) return true;
+  }
+  return false;
+}
+
+/* ============================================================================
+   FUN LAYER — AI-Town-style social sim + game elements
+   inspiration: a16z-infra/ai-town (MIT) · Stanford "Generative Agents" (Smallville)
+   (patterns adapted & reimplemented, no code copied)
+   ========================================================================== */
+state.coinCount = 0; state.ach = new Set(); state.talkedNpcs = new Set(); state.buffT = 0;
+const CAFE = { x: 1600, y: 1130 };
+const STAGE = { x: 350, y: 1130 };
+
+function playerSpd(){ return player.speed * (state.buffT > 0 ? 1.35 : 1); }
+
+/* ---------- SFX (WebAudio, offline, guarded) ---------- */
+let _actx = null;
+function sfx(type){
+  try{
+    if(!_actx) _actx = new (window.AudioContext || window.webkitAudioContext)();
+    if(_actx.state === 'suspended') _actx.resume();
+    const o = _actx.createOscillator(), g = _actx.createGain();
+    o.connect(g); g.connect(_actx.destination);
+    const t = _actx.currentTime; let d = 0.12;
+    if(type==='coin'){ o.frequency.setValueAtTime(660,t); o.frequency.exponentialRampToValueAtTime(1320,t+0.08); d=0.11; }
+    else if(type==='ok'){ o.frequency.setValueAtTime(523,t); o.frequency.setValueAtTime(784,t+0.09); d=0.19; }
+    else if(type==='bad'){ o.type='square'; o.frequency.setValueAtTime(170,t); d=0.20; }
+    else { o.frequency.setValueAtTime(520,t); d=0.07; }
+    g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(0.13,t+0.01); g.gain.exponentialRampToValueAtTime(0.0001,t+d);
+    o.start(t); o.stop(t+d+0.02);
+  }catch(e){}
+}
+
+/* ---------- Emotes (floating icons) ---------- */
+const emotes = [];
+function emote(x,y,ch){ emotes.push({x,y,ch,t:1.4}); }
+function emotesTick(dt){ for(let i=emotes.length-1;i>=0;i--){ const e=emotes[i]; e.y-=24*dt; e.t-=dt; if(e.t<=0) emotes.splice(i,1); } }
+function emotesDraw(){ ctx.textAlign='center'; ctx.textBaseline='middle'; for(const e of emotes){ ctx.save(); ctx.globalAlpha=Math.max(0,Math.min(1,e.t)); ctx.font='17px sans-serif'; ctx.fillText(e.ch,e.x,e.y); ctx.restore(); } }
+const EMOJI = ['❤️','❗','♪','👍','😄','✨','😆','💬','🙌'];
+
+/* ---------- Collectible coins ---------- */
+const coins = [];
+function funInBuilding(x,y){ for(const b of BUILDINGS){ if(x>b.x-20&&x<b.x+b.w+20&&y>b.y-20&&y<b.y+b.h+20) return true; } return false; }
+function spawnCoin(){
+  for(let k=0;k<30;k++){
+    const x=rnd(80,WORLD.w-80), y=rnd(120,WORLD.h-80);
+    if(funInBuilding(x,y)) continue;
+    if(dist(x,y,PLAZA.x,PLAZA.y)<74) continue;
+    let ic='🪙'; const r=Math.random(); if(r<0.06) ic='⭐'; else if(r<0.11) ic=choice(['🦴','🧠','🫁']);
+    coins.push({x,y,icon:ic,bob:rnd(0,6)}); return;
+  }
+}
+function coinsInit(){ for(let i=0;i<26;i++) spawnCoin(); }
+function coinVal(ic){ return ic==='⭐'?5:(ic==='🪙'?1:3); }
+function coinsTick(dt){
+  for(let i=coins.length-1;i>=0;i--){ const c=coins[i]; c.bob+=dt*4.5;
+    if(dist(player.x,player.y,c.x,c.y)<22){
+      const v=coinVal(c.icon); coins.splice(i,1); state.coinCount+=v;
+      sfx('coin'); emote(player.x,player.y-30,c.icon); updateFunHUD(); achCheck();
+      setTimeout(spawnCoin, rnd(6,15)*1000);
+    }
+  }
+}
+function coinsDraw(){
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  for(const c of coins){ const yy=c.y+Math.sin(c.bob)*3;
+    ctx.save(); ctx.fillStyle='rgba(0,0,0,.2)'; ctx.beginPath(); ctx.ellipse(c.x,c.y+8,7,2.4,0,0,Math.PI*2); ctx.fill();
+    ctx.globalAlpha=.35; ctx.fillStyle='#ffe9a8'; ctx.beginPath(); ctx.arc(c.x,yy,9,0,Math.PI*2); ctx.fill(); ctx.globalAlpha=1;
+    ctx.font='15px sans-serif'; ctx.fillText(c.icon,c.x,yy); ctx.restore();
+  }
+}
+
+/* ---------- AI-Town-style conversations ---------- */
+const convos = [];
+const CONVO_LINES = [
+ '해부학 시험 언제지?','신경계 진짜 어렵다 ㅠ','과제 다 했어?','오늘 실습 재밌었어!','도서관 갈래?',
+ '커피 한 잔 하자','교수님 강의 좋더라','골든벨 도전했어?','국시 화이팅!','이번 주 축제래',
+ 'MMT 등급 헷갈려','오십견 케이스 봤어?','호흡재활 실습 언제야?','저 코인 다 주웠어 ㅋㅋ','같이 밥 먹자',
+ '보행분석 어렵다','PNF 패턴 외웠어?','근육 이름 너무 많아','오늘 날씨 좋다','신입생이래, 인사하자!'
+];
+function agentFree(a){ return a.role==='student' && a.state!=='convo' && (a.cvCd||0)<=0 && !a.bubble; }
+function convoTick(dt){
+  students.forEach(s=>{ if(s.cvCd>0) s.cvCd-=dt; });
+  const cap = isClassTime()?2:6;
+  const rate = isClassTime()?0.25:1.3;
+  if(convos.length<cap && Math.random()<dt*rate) tryStartConvo();
+  for(let i=convos.length-1;i>=0;i--){ const cv=convos[i]; advanceConvo(cv,dt);
+    if(cv.done){ cv.members.forEach(m=>{ m.state='idle'; m.timer=rnd(1,3); m.cvCd=rnd(8,16); }); convos.splice(i,1); } }
+}
+function tryStartConvo(){
+  const free = students.filter(agentFree);
+  for(let i=0;i<free.length;i++){ const a=free[i]; let b=null,bd=240;
+    for(let j=0;j<free.length;j++){ if(i===j) continue; const d=dist(a.x,a.y,free[j].x,free[j].y); if(d<bd){ bd=d; b=free[j]; } }
+    if(b){ const members=[a,b];
+      const c=free.find(x=>x!==a&&x!==b&&dist(x.x,x.y,a.x,a.y)<170);
+      if(c && Math.random()<0.45) members.push(c);
+      const spot={ x:(a.x+b.x)/2, y:(a.y+b.y)/2 };
+      members.forEach(m=>{ m.state='convo'; });
+      convos.push({ members, spot, phase:'walk', turn:0, timer:0, maxTurns:Math.floor(rnd(4,7)), done:false });
+      return;
+    }
+  }
+}
+function advanceConvo(cv,dt){
+  if(cv.phase==='walk'){
+    let all=true;
+    cv.members.forEach((m,k)=>{ const ang=k/cv.members.length*Math.PI*2;
+      const tx=cv.spot.x+Math.cos(ang)*26, ty=cv.spot.y+Math.sin(ang)*26;
+      const done=moveToward(m,tx,ty,dt); if(!done) all=false; else m.moving=false; });
+    if(all){ cv.phase='talk'; cv.timer=0.2; cv.turn=0; }
+  } else if(cv.phase==='talk'){
+    cv.timer-=dt;
+    if(cv.timer<=0){
+      const sp=cv.members[cv.turn%cv.members.length];
+      const other=cv.members[(cv.turn+1)%cv.members.length];
+      sp.dir = other.x> sp.x ? 'right':'left';
+      npcSpeak(sp, choice(CONVO_LINES), false);
+      if(Math.random()<0.55) emote(sp.x, sp.y-36, choice(EMOJI));
+      cv.turn++; cv.timer=rnd(1.5,2.5);
+      if(cv.turn>=cv.maxTurns){ cv.phase='end'; cv.timer=1.0; }
+    }
+  } else { cv.timer-=dt; if(cv.timer<=0) cv.done=true; }
+}
+
+/* ---------- Greetings (NPCs wave at the player) ---------- */
+function greetTick(dt){
+  for(const s of students){
+    if(s.state==='convo') continue;
+    if(s.greetCd>0){ s.greetCd-=dt; continue; }
+    if(dist(s.x,s.y,player.x,player.y)<78){
+      emote(s.x, s.y-34, '👋');
+      if(Math.random()<0.5) npcSpeak(s, choice(['안녕하세요!','신입생이다!','화이팅!','반가워요~','같이 가요!']), false);
+      s.greetCd = rnd(9,16); state.talkedNpcs.add(s.name); achCheck();
+    }
+  }
+}
+
+/* ---------- Campus cat ---------- */
+const pet = { x: PLAZA.x+70, y: PLAZA.y+90, tx:null, ty:null, state:'idle', timer:2, dir:'down', walk:0, moving:false, speed:44, petCd:0 };
+function petTick(dt){
+  if(pet.petCd>0) pet.petCd-=dt;
+  if(pet.state==='idle'){ pet.timer-=dt; if(pet.timer<=0){ const w=choice(WP); pet.tx=w.x+rnd(-40,40); pet.ty=w.y+rnd(-40,40); pet.state='walk'; } }
+  else { const done=moveToward(pet,pet.tx,pet.ty,dt); if(done){ pet.state='idle'; pet.moving=false; pet.timer=rnd(2,5); } }
+}
+function petDraw(){
+  const bob=pet.moving?Math.sin(pet.walk)*1.5:0; const x=pet.x, y=pet.y+bob;
+  ctx.fillStyle='rgba(0,0,0,.22)'; ctx.beginPath(); ctx.ellipse(x,y+7,9,3,0,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#e8a24b';
+  ctx.beginPath(); ctx.ellipse(x,y,10,6,0,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(x+ (pet.dir==='left'?-8:8), y-4, 5.5, 0, Math.PI*2); ctx.fill();
+  const hx=x+(pet.dir==='left'?-8:8);
+  ctx.beginPath(); ctx.moveTo(hx-4,y-8); ctx.lineTo(hx-2,y-13); ctx.lineTo(hx,y-8); ctx.closePath();
+  ctx.moveTo(hx+4,y-8); ctx.lineTo(hx+2,y-13); ctx.lineTo(hx,y-8); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle='#e8a24b'; ctx.lineWidth=3; ctx.beginPath(); ctx.moveTo(x-9,y); ctx.quadraticCurveTo(x-16,y-6,x-13,y-12); ctx.stroke();
+  ctx.font='9px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillStyle='rgba(8,14,30,.7)'; const nw=ctx.measureText('🐈 냥이').width+8; drawRoundRect(x-nw/2,y+12,nw,13,5); ctx.fill();
+  ctx.fillStyle='#ffe4a0'; ctx.fillText('🐈 냥이', x, y+19);
+}
+function funPet(){
+  if(pet.petCd>0){ emote(pet.x,pet.y-24,'😽'); return; }
+  pet.petCd=1.5; emote(pet.x,pet.y-26,'❤️'); emote(player.x,player.y-30,'😊');
+  state.coinCount+=1; sfx('coin'); toast('🐈 냥이가 골골거려요! +1🪙'); achGrant('pet'); updateFunHUD();
+}
+
+/* ---------- Café (speed boost) ---------- */
+function drawCafe(){
+  var x=CAFE.x, y=CAFE.y;
+  ctx.fillStyle='rgba(0,0,0,.22)';drawRoundRect(x-70,y+30,150,14,8);ctx.fill();
+  ctx.fillStyle='#6b4a30';drawRoundRect(x-64,y-16,128,50,6);ctx.fill();
+  ctx.fillStyle='#f4ead0';drawRoundRect(x-56,y-6,112,34,4);ctx.fill();
+  ctx.fillStyle='#bfe3ea';ctx.fillRect(x-48,y+2,40,22);
+  ctx.fillStyle='#5a3a24';ctx.fillRect(x+2,y+2,22,26);
+  for(var i=0;i<9;i++){ctx.fillStyle=(i%2)?'#c8506a':'#f7f0e0';ctx.fillRect(x-58+i*13,y-24,13,16);}
+  ctx.fillStyle='#c8506a';ctx.fillRect(x-58,y-8,117,4);
+  ctx.fillStyle='#0b224e';drawRoundRect(x-52,y-40,104,18,6);ctx.fill();
+  ctx.strokeStyle='#d4af52';ctx.lineWidth=1.5;drawRoundRect(x-52,y-40,104,18,6);ctx.stroke();
+  ctx.fillStyle='#f4ead0';ctx.font='bold 13px '+FSAN;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('☕ 물치 카페',x,y-31);
+  drawParasol(x-92,y+16,'#e07a8f'); drawParasol(x+92,y+16,'#7fb0e0');
+  ctx.save();ctx.globalAlpha=.5;ctx.fillStyle='#dfe8ff';ctx.font='13px sans-serif';ctx.fillText('☁',x-40,y-46+Math.sin(performance.now()/400)*2);ctx.restore();
+}
+function funCafe(){
+  state.buffT=15; sfx('ok'); emote(player.x,player.y-30,'☕'); emote(player.x,player.y-46,'⚡');
+  toast('☕ 커피 충전! 15초간 스피드 UP'); achGrant('cafe');
+}
+
+/* ---------- Festival stage + Goldenbell quiz rush ---------- */
+function drawStage(){
+  var x=STAGE.x, y=STAGE.y, t=performance.now()/220;
+  ctx.fillStyle='rgba(0,0,0,.24)';drawRoundRect(x-90,y+28,184,16,9);ctx.fill();
+  ctx.fillStyle='#3a2a55';drawRoundRect(x-88,y-6,176,40,6);ctx.fill();
+  ctx.fillStyle='#4a3570';ctx.fillRect(x-88,y-6,176,9);
+  ctx.fillStyle='#2a1e40';ctx.fillRect(x-88,y+30,176,6);
+  ctx.fillStyle='#1a2740';ctx.fillRect(x-92,y-64,8,60);ctx.fillRect(x+84,y-64,8,60);
+  ctx.fillStyle='#0b224e';drawRoundRect(x-92,y-70,184,30,6);ctx.fill();
+  ctx.strokeStyle='#d4af52';ctx.lineWidth=2;drawRoundRect(x-92,y-70,184,30,6);ctx.stroke();
+  ctx.fillStyle='#f4ead0';ctx.font='bold 15px '+FSAN;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('🎪 물치제 무대',x,y-55);
+  for(var i=0;i<5;i++){var lx=x-70+i*35;var on=(Math.floor(t*2)+i)%2;ctx.fillStyle=on?'#ffe9a8':'#6b5a2a';ctx.beginPath();ctx.arc(lx,y-40,3.5,0,Math.PI*2);ctx.fill();
+    if(on){ctx.save();ctx.globalAlpha=.2;ctx.fillStyle='#ffe9a8';ctx.beginPath();ctx.moveTo(lx,y-40);ctx.lineTo(lx-14,y+4);ctx.lineTo(lx+14,y+4);ctx.closePath();ctx.fill();ctx.restore();}}
+  for(var d=0;d<4;d++){var dx=x-48+d*32;var dy=y+6+Math.sin(t+d)*4;
+    ctx.fillStyle=['#e07a5f','#81b29a','#c98bb9','#6aa9e0'][d];drawRoundRect(dx-6,dy-6,12,14,4);ctx.fill();
+    ctx.fillStyle='#f0c9a8';ctx.beginPath();ctx.arc(dx,dy-12,5,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle=['#e07a5f','#81b29a','#c98bb9','#6aa9e0'][d];ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(dx-5,dy-2);ctx.lineTo(dx-9,dy-10-Math.sin(t*2+d)*3);ctx.moveTo(dx+5,dy-2);ctx.lineTo(dx+9,dy-10-Math.cos(t*2+d)*3);ctx.stroke();}
+}
+function stageTick(dt){
+  if(Math.random()<dt*1.6){ emote(STAGE.x-40+rnd(-10,80), STAGE.y-30, choice(['♪','♫','✨','🎶'])); }
+}
+
+let gb = null;
+function gbStart(){
+  const pool=[]; for(const k in QUIZ) QUIZ[k].forEach(it=>pool.push({it,subj:k})); shuffle(pool);
+  gb={ pool, i:0, n:Math.min(7,pool.length), correct:0, combo:0, best:0, per:12, time:12, coins:0, phase:'play' };
+  achGrant('gb'); gbRender();
+}
+function gbRender(){
+  const cur=gb.pool[gb.i];
+  setDialog('🔔','linear-gradient(135deg,#f0d488,#c8506a)','골든벨 퀴즈 러시', (gb.i+1)+' / '+gb.n+' · 콤보 '+gb.combo);
+  const body=document.getElementById('dlg-body'), foot=document.getElementById('dlg-foot');
+  let html='<div class="gb-bar"><div class="gb-fill" id="gb-fill"></div></div>';
+  html+='<div class="qmeta"><span>'+(SUBJ_NAME[cur.subj]||'')+'</span><span>정답 +5 · 콤보 보너스 🪙</span></div>';
+  html+='<div class="say" style="font-weight:600">'+cur.it.q+'</div><div id="opts">';
+  cur.it.o.forEach((op,idx)=>{ html+='<button class="opt" data-i="'+idx+'"><span class="num">'+(idx+1)+'</span><span>'+op+'</span></button>'; });
+  html+='</div>';
+  body.innerHTML=html; foot.innerHTML='';
+  body.querySelectorAll('.opt').forEach(b=>b.onclick=()=>gbAnswer(parseInt(b.dataset.i,10)));
+  gb.time=gb.per; showDialog();
+}
+function gbReveal(correctIdx, chosen){
+  const opts=document.querySelectorAll('#opts .opt');
+  opts.forEach((b,k)=>{ b.disabled=true; if(k===correctIdx) b.classList.add('correct'); if(chosen!=null && k===chosen && k!==correctIdx) b.classList.add('wrong'); });
+}
+function gbNext(){ gb.i++; if(gb.i>=gb.n) gbEnd(); else { gb.phase='play'; gbRender(); } }
+function gbAnswer(idx){
+  if(!gb||gb.phase!=='play') return;
+  const cur=gb.pool[gb.i]; const ok=idx===cur.it.a; gb.phase='reveal'; gbReveal(cur.it.a, idx);
+  if(ok){ gb.combo++; gb.best=Math.max(gb.best,gb.combo); const gain=5+(gb.combo-1)*2; gb.coins+=gain; state.coinCount+=gain; gb.correct++; sfx('ok'); toast('정답! +'+gain+'🪙 (콤보 '+gb.combo+')'); if(gb.combo>=5) achGrant('gb5'); }
+  else { gb.combo=0; sfx('bad'); toast('오답!'); }
+  updateFunHUD(); setTimeout(gbNext, 950);
+}
+function gbTick(dt){
+  if(!gb||gb.phase!=='play') return;
+  gb.time-=dt; const f=document.getElementById('gb-fill'); if(f) f.style.width=Math.max(0,gb.time/gb.per*100)+'%';
+  if(gb.time<=0){ gb.phase='reveal'; gbReveal(gb.pool[gb.i].it.a,null); gb.combo=0; sfx('bad'); toast('시간 초과!'); setTimeout(gbNext, 950); }
+}
+function gbEnd(){
+  const won=gb?gb.coins:0, cor=gb?gb.correct:0, n=gb?gb.n:0, best=gb?gb.best:0;
+  setDialog('🏁','linear-gradient(135deg,#f0d488,#4a8f5a)','골든벨 결과','수고했어요!');
+  const body=document.getElementById('dlg-body'), foot=document.getElementById('dlg-foot');
+  body.innerHTML='<div class="say" style="text-align:center;font-size:16px"><span class="who" style="display:block;text-align:center">🔔 골든벨 러시 종료</span>정답 <b style="color:var(--gold-hi)">'+cor+' / '+n+'</b> · 최고 콤보 <b>'+best+'</b><br><br>획득 코인 <b style="color:var(--gold-hi);font-size:22px">'+won+' 🪙</b></div>';
+  foot.innerHTML='';
+  const b1=document.createElement('button'); b1.className='btn primary'; b1.textContent='닫기'; b1.onclick=closeDialog;
+  const b2=document.createElement('button'); b2.className='btn'; b2.textContent='🔁 다시 도전'; b2.onclick=gbStart;
+  foot.appendChild(b1); foot.appendChild(b2);
+  gb=null; updateFunHUD();
+}
+
+/* ---------- Achievements ---------- */
+const ACH=[
+ {id:'first', t:'첫 강의', d:'강의관 1곳 이수'},
+ {id:'half', t:'절반 돌파', d:'강의관 4곳 이수'},
+ {id:'grad', t:'🎓 졸업!', d:'8개 강의관 전부 이수'},
+ {id:'coin10', t:'짤짤이', d:'코인 10개 수집'},
+ {id:'coin30', t:'장학생', d:'코인 30개 수집'},
+ {id:'social', t:'인싸', d:'AI 5명과 인사·대화'},
+ {id:'pet', t:'냥집사', d:'캠퍼스 냥이 쓰다듬기'},
+ {id:'cafe', t:'카페인 충전', d:'물치 카페 방문'},
+ {id:'gb', t:'골든벨 도전자', d:'골든벨 퀴즈 러시 플레이'},
+ {id:'gb5', t:'골든벨 5연속', d:'골든벨 5콤보 달성'},
+];
+function achGrant(id){ if(state.ach.has(id)) return; const a=ACH.find(x=>x.id===id); if(!a) return; state.ach.add(id); toast('🏆 도전과제 달성: '+a.t); sfx('ok'); emote(player.x,player.y-42,'🏆'); }
+function achCheck(){
+  if(state.coinCount>=10) achGrant('coin10');
+  if(state.coinCount>=30) achGrant('coin30');
+  if(state.visited.size>=1) achGrant('first');
+  if(state.visited.size>=4) achGrant('half');
+  if(state.visited.size>=8) achGrant('grad');
+  if(state.talkedNpcs.size>=5) achGrant('social');
+}
+function funOpenAch(){
+  const b=document.getElementById('ach-body'); let h='';
+  ACH.forEach(a=>{ const on=state.ach.has(a.id); h+='<div class="say" style="opacity:'+(on?1:.5)+';margin-bottom:8px"><span class="who">'+(on?'✅ ':'🔒 ')+a.t+'</span>'+a.d+'</div>'; });
+  h+='<div class="expl"><span class="tag">진행</span>이수 '+state.visited.size+'/8 · 코인 '+state.coinCount+'개 · 인사/대화 '+state.talkedNpcs.size+'명 · 달성 '+state.ach.size+'/'+ACH.length+'</div>';
+  b.innerHTML=h; document.getElementById('ach').classList.add('show');
+}
+
+/* ---------- HUD / near / draw orchestration ---------- */
+function updateFunHUD(){ const el=document.getElementById('coins'); if(el) el.textContent=state.coinCount; }
+function funNearCheck(){
+  if(dist(player.x,player.y,pet.x,pet.y)<64) return { type:'pet', ref:pet };
+  if(dist(player.x,player.y,CAFE.x,CAFE.y)<64) return { type:'cafe', ref:CAFE };
+  if(dist(player.x,player.y,STAGE.x,STAGE.y)<72) return { type:'stage', ref:STAGE };
+  if(typeof ENTRANCE!=='undefined' && dist(player.x,player.y,ENTRANCE.x,ENTRANCE.y-72)<94) return { type:'gate', ref:{x:ENTRANCE.x,y:ENTRANCE.y-72} };
+  return null;
+}
+function funTick(dt){
+  if(!state.entered) return;
+  if(state.buffT>0) state.buffT-=dt;
+  emotesTick(dt); coinsTick(dt); convoTick(dt); petTick(dt); greetTick(dt); stageTick(dt); gbTick(dt); if(typeof staffTick==="function") staffTick(dt);
+}
+function funDrawProps(){ drawFestival(); drawRest(); drawCafe(); drawStage(); coinsDraw(); }
+function funDrawTop(){
+  for(const cv of convos){ if(cv.phase==='talk'){ ctx.save(); ctx.strokeStyle='rgba(240,212,136,.22)'; ctx.lineWidth=2; ctx.setLineDash([4,4]); ctx.beginPath(); ctx.arc(cv.spot.x,cv.spot.y,34,0,Math.PI*2); ctx.stroke(); ctx.restore(); } }
+  petDraw(); emotesDraw();
+}
+function funNightOverlay(){
+  const hr=(state.clock/60)%24; let d=0;
+  if(hr>=19||hr<5) d=0.32; else if(hr>=17) d=(hr-17)/2*0.32; else if(hr<7) d=(7-hr)/2*0.32;
+  if(d>0.01){ ctx.save(); ctx.fillStyle='rgba(8,14,44,'+d.toFixed(2)+')'; ctx.fillRect(0,0,VW,VH); ctx.restore(); }
+}
+
+/* ---------- init ---------- */
+coinsInit();
+try{ document.getElementById('achBtn').onclick=funOpenAch; }catch(e){}
+
+
+/* ============================================================================
+   MOBILE / TOUCH SUPPORT — virtual joystick + action button (link-only play)
+   ========================================================================== */
+window.touchVec = { x:0, y:0 };
+(function(){
+  const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+  if(isTouch) document.body.classList.add('touch');
+
+  // create/resume audio inside first user gesture (mobile autoplay policy)
+  window.addEventListener('touchstart', function prime(){
+    try{ if(typeof _actx!=='undefined'){ if(_actx==null) _actx=new (window.AudioContext||window.webkitAudioContext)(); if(_actx&&_actx.resume) _actx.resume(); } }catch(e){}
+    window.removeEventListener('touchstart', prime);
+  }, {passive:true});
+
+  const pad=document.getElementById('touchpad'), knob=document.getElementById('touchknob'), btnE=document.getElementById('btnE');
+  const R=46; let jid=null, cx=0, cy=0;
+  function setKnob(dx,dy){ if(knob) knob.style.transform='translate('+dx.toFixed(1)+'px,'+dy.toFixed(1)+'px)'; }
+  function jStart(e){ const t=e.changedTouches[0]; const r=pad.getBoundingClientRect(); cx=r.left+r.width/2; cy=r.top+r.height/2; jid=t.identifier; jMoveTouch(t); e.preventDefault(); }
+  function jMoveTouch(t){ let dx=t.clientX-cx, dy=t.clientY-cy; const m=Math.hypot(dx,dy)||1; const cl=Math.min(m,R); dx=dx/m*cl; dy=dy/m*cl; setKnob(dx,dy); window.touchVec.x=Math.max(-1,Math.min(1,dx/R)); window.touchVec.y=Math.max(-1,Math.min(1,dy/R)); }
+  function jMove(e){ if(jid===null) return; for(const t of e.changedTouches){ if(t.identifier===jid){ jMoveTouch(t); e.preventDefault(); } } }
+  function jEnd(e){ for(const t of e.changedTouches){ if(t.identifier===jid){ jid=null; window.touchVec.x=0; window.touchVec.y=0; setKnob(0,0); } } }
+  if(pad){
+    pad.addEventListener('touchstart', jStart, {passive:false});
+    window.addEventListener('touchmove', jMove, {passive:false});
+    window.addEventListener('touchend', jEnd, {passive:false});
+    window.addEventListener('touchcancel', jEnd, {passive:false});
+  }
+  function doInteract(){ if(!anyModalOpen() && state.entered) tryInteract(); }
+  if(btnE){
+    btnE.addEventListener('touchstart', function(e){ e.preventDefault(); doInteract(); }, {passive:false});
+    btnE.addEventListener('click', doInteract);
+  }
+  window.addEventListener('orientationchange', function(){ setTimeout(function(){ try{ resize(); }catch(e){} }, 250); });
+})();
+
+
+/* ============================================================================
+   CAMPUS LIFE — 학과사무실(조교) · 전공동아리(7) · 물치 학회실
+   출처: 안산대학교 물리치료학과 공식 홈페이지 (전공동아리·학과사무실)
+   ========================================================================== */
+const CLUBS=[
+ {n:'AXIS', f:'축추(Axis · 경추 2번)', c:'#c86a5f', d:'회전과 축의 역할을 하는 축추처럼 물치과의 중심이 되겠다는 포부. 소수 인원이 전공 스터디를 함께하는 가족 같은 분위기의 동아리.'},
+ {n:'CNS', f:'Central Nervous System · 중추신경계', c:'#9a86e0', d:'신경계뿐 아니라 타 과목까지 다양한 스터디로 선후배가 돕고 친목을 쌓아, 즐거운 학교생활과 임상의 좋은 인연을 만드는 동아리.'},
+ {n:'SPT', f:'Sport Physical Therapy', c:'#4fc0af', d:'스포츠 마사지·테이핑 등 스포츠물리치료 교육과, 해부학·생리학 같은 전공과목의 심도 깊은 스터디를 위한 동아리.'},
+ {n:'SS', f:'Skill Share', c:'#6aa9e0', d:'운동처방 및 실습을 집중적으로 다뤄, 사회에서 필요로 하는 인재를 양성하기 위한 동아리.'},
+ {n:'RE:V', f:'Revolunteer · 봉사', c:'#66c07a', d:'봉사활동을 지속한다는 의미의 봉사동아리. 지역사회에 선한 영향력을 전파하며 치료사로서의 봉사정신을 만들어 가는 동아리.'},
+ {n:'약손', f:'아름다운 손', c:'#e0a24b', d:'물치사의 기본 요소 중 하나인 근골격계 촉진을 배우고, 손으로 직접 느껴보며 실습·공부할 수 있는 동아리.'},
+ {n:'HAPT', f:'Human Anatomy of PT · 인체해부학', c:'#7d8ce8', d:'3D 영상 시스템을 활용해 인체 구조를 보다 쉽고 재미있게 알아가고, 선후배 스터디로 친목을 도모하는 인체해부학 동아리.'},
+];
+
+const staff = [
+ mkChar({ x:1745, y:665, homeX:1745, homeY:665, name:'정성예 조교', role:'staff', color:'#9a7fc0', hair:'#221f1c', speed:34, state:'idle', timer:rnd(1,3) }),
+ mkChar({ x:1802, y:665, homeX:1802, homeY:665, name:'김희연 조교', role:'staff', color:'#5a92c0', hair:'#221f1c', speed:34, state:'idle', timer:rnd(1,3) }),
+];
+staff.forEach(x=>allChars.push(x));
+function staffTick(dt){
+  for(const s of staff){
+    if(s.state==='walk'){ if(moveToward(s,s.tx,s.ty,dt)){ s.state='idle'; s.moving=false; s.timer=rnd(2.5,6); } }
+    else { s.moving=false; s.timer-=dt; if(s.timer<=0){ s.tx=s.homeX+rnd(-20,20); s.ty=s.homeY+rnd(-6,12); s.state='walk'; } }
+    if(s.bubbleT>0){ s.bubbleT-=dt; if(s.bubbleT<=0) s.bubble=null; }
+  }
+}
+
+function openOffice(){
+  setDialog('🏢','linear-gradient(135deg,#5b6472,#2a3550)','학과사무실','안산대학교 물리치료학과');
+  const body=document.getElementById('dlg-body'), foot=document.getElementById('dlg-foot');
+  body.innerHTML=
+   '<div class="say"><span class="who">안내</span>수강·학적·증명·행정 문의는 학과사무실로 오세요. 친절한 조교 선생님들이 도와드립니다.</div>'+
+   '<div class="say"><span class="who">👩‍💼 조교 선생님</span><b>정성예</b> 조교 · <b>김희연</b> 조교</div>'+
+   jobLink('🏫 물리치료학과 홈페이지 바로가기','https://physi.ansan.ac.kr/physi',false)+'<div class="expl"><span class="tag">위치·연락</span>안산대학교 <b>성실관 205호</b> 물리치료학과 · Tel 031-363-6943 · Fax 031-363-7704</div>';
+  foot.innerHTML=''; addFoot('닫기', closeDialog, true); showDialog();
+}
+function openStaff(ref){
+  const nm = ref ? ref.name : '조교';
+  setDialog('👩‍💼','linear-gradient(135deg,#6b7a9a,#2a3550)', nm, '학과사무실 조교');
+  const body=document.getElementById('dlg-body'), foot=document.getElementById('dlg-foot');
+  body.innerHTML='<div class="say"><span class="who">'+nm+'</span>안녕하세요! 무엇을 도와드릴까요? 학과 행정·증명·수강 관련은 언제든 <b>성실관 205호</b> 학과사무실로 오세요.</div>';
+  foot.innerHTML=''; addFoot('🏢 사무실 안내', openOffice); addFoot('닫기', closeDialog, true); showDialog();
+}
+function openClub(){
+  setDialog('🎽','linear-gradient(135deg,#c98b3a,#8a642a)','전공동아리방','안산대 물리치료학과 · 7개 전공동아리');
+  const body=document.getElementById('dlg-body'), foot=document.getElementById('dlg-foot');
+  let h='<div class="say" style="border-style:dashed">매 학기 초 신입 부원 모집! 관심 있는 동아리를 살펴보세요.</div>';
+  CLUBS.forEach(c=>{ h+='<div class="say"><span class="who" style="color:'+c.c+'">'+c.n+' · '+c.f+'</span>'+c.d+'</div>'; });
+  h+=jobLink('🎽 전공동아리 소개 — 학과 홈페이지','https://physi.ansan.ac.kr/physi/circle',false);
+  body.innerHTML=h; foot.innerHTML=''; addFoot('닫기', closeDialog, true); showDialog();
+}
+function openCouncil(){
+  setDialog('📣','linear-gradient(135deg,#3c8f7a,#276b5a)','물리치료학과 학회실','학생회 · 학생 자치기구');
+  const body=document.getElementById('dlg-body'), foot=document.getElementById('dlg-foot');
+  body.innerHTML=
+   '<div class="say"><span class="who">물치 학생회(학회)</span>학생 대표 기구로서 학과 행사·MT·체육대회·학술제를 기획하고, 학생 복지와 선후배 교류, 국시 대비 스터디를 지원합니다.</div>'+
+   '<div class="say"><span class="who">🙌 함께해요</span>과대·집행부 모집, 행사 자원봉사 등 참여 기회가 열려 있습니다. 궁금하면 학회실로 오세요!</div>'+
+   jobLink('👥 임원소개 — 학생회·임원 보기','https://physi.ansan.ac.kr/physi/officer',false)+'<div class="expl"><span class="tag">참고</span>임원·행사 정보는 학과 「임원소개」 페이지에서 확인하세요.</div>';
+  foot.innerHTML=''; addFoot('닫기', closeDialog, true); showDialog();
+}
+
+
+/* ============================================================================
+   대학일자리플러스센터 — 진로·취업·직무 + 「자기를 이해하기」(심경섭 교수)
+   출처: 안산대학교 대학일자리플러스센터 (job.ansan.ac.kr) · Map of Me (map-of-me.vercel.app)
+   ========================================================================== */
+function jobLink(label,url,hl){ return '<a class="joblink'+(hl?' hl':'')+'" href="'+url+'" target="_blank" rel="noopener">'+label+'<span>↗</span></a>'; }
+
+function openCareer(){
+  setDialog('💼','linear-gradient(135deg,#2f7fb0,#1f4f80)','대학일자리플러스센터','안산대학교 · 진로·취업·직무 원스톱');
+  const body=document.getElementById('dlg-body'), foot=document.getElementById('dlg-foot');
+  let h='<div class="say"><span class="who">안내</span>고용노동부·안산대학교·안산시가 함께 운영하는 일원화 진로·취업 지원기관. 상담·채용정보·잡매칭·프로그램으로 성공적인 사회진출을 돕습니다. <b>“나를 알아주는 대학”</b></div>';
+  h+='<div class="say" style="border-style:dashed;border-color:var(--gold)"><span class="who" style="color:var(--gold-hi)">🧭 자기를 이해하기 · 심경섭 교수</span>대학일자리플러스센터 부센터장 심경섭 교수의 진로상담 카테고리. 나의 성향·강점을 돌아보고 진로·직무 방향을 스스로 설계하는 자기이해 활동입니다.</div>';
+  h+=jobLink('🧭 자기를 이해하기 — Map of Me 열기','https://map-of-me.vercel.app/',true);
+  h+=jobLink('🗺️ 진로·취업 로드맵','https://job.ansan.ac.kr/job/content/4',false);
+  h+=jobLink('💬 진로·취업 상담 신청','https://aujob.ansan.ac.kr/aujob',false);
+  h+=jobLink('📢 채용정보·취업매칭','https://job.ansan.ac.kr/job/board/1',false);
+  h+=jobLink('🤖 AI 자기소개서 솔루션','https://aujob.ansan.ac.kr/aujob/ai',false);
+  h+=jobLink('🎤 AI 면접 솔루션','https://www.deepresume.kr/user/login/ansan',false);
+  h+='<div class="say"><span class="who">🧩 직무·역량 프로그램</span>현직자 직무 특강 · 실무역량 마스터 클래스 · 기업탐방 · 온라인 멘토링 · 취업교과목 운영</div>';
+  h+='<div class="expl"><span class="tag">위치·연락</span>안산대학교 안산대학로 155 · Tel 031-400-7134 · Instagram @ansan_job</div>';
+  body.innerHTML=h; foot.innerHTML='';
+  addFoot('🧭 자기를 이해하기', openSelfMap, true); addFoot('닫기', closeDialog);
+  showDialog();
+}
+
+function openSelfMap(){
+  setDialog('🧭','linear-gradient(135deg,#d4af52,#2f7fb0)','자기를 이해하기','심경섭 교수 · 진로 상담 주제');
+  const body=document.getElementById('dlg-body'), foot=document.getElementById('dlg-foot');
+  body.innerHTML=
+   '<div class="say"><span class="who">심경섭 교수</span>진로의 출발점은 <b>“나를 아는 것”</b>입니다. 나의 성향·강점·가치를 돌아보고, 물리치료사로서(그리고 그 너머의) 진로·직무 방향을 스스로 설계해 봅시다.</div>'+
+   '<div class="say"><span class="who">🧭 Map of Me · 명도(命圖)</span>사주·성격유형(16유형)·리더십 이미지를 <b>매개</b>로 나를 돌아보는 자기이해·성찰 워크시트입니다. 운세를 예언하는 점(占)이 아니라, 나와 대화하는 재료로 쓰는 <b>교육용 도구</b>예요. <b>‘진로·취업 모드’</b>는 생년월일 없이 16유형+리더형만으로 성향·직무 방향 리포트를 만들 수 있습니다.</div>'+'<div class="say"><span class="who">📄 결과물: 상담 요약</span>완료하면 <b>「자기이해·진로 상담 요약」</b>을 PDF·PNG로 만들 수 있어요 — 성향·지향 리더상·타고난 결, 일의 방향(직무·적성), 학생생활 포인트, 이번 달 실행 약속(체크리스트), 상담 메모·서명란까지. 물치 학생용으로 스포츠재활·도수치료·1인 센터·필라테스 창업 같은 진로 예시도 제시됩니다. (대화 촉진용 참고자료 · 표준화 검사·진단 아님 · 진로 결정은 대학일자리센터 상담과 병행)</div>'+
+   '<div style="text-align:center;margin:6px 0 2px">'+jobLink('🧭 Map of Me 바로가기 — map-of-me.vercel.app','https://map-of-me.vercel.app/',true)+'</div>'+
+   '<div class="expl"><span class="tag">참고</span>명리·성격유형 해석은 문화·교육용 참고 정보이며 검증된 과학적 예측이 아닙니다. 특정 종교·신앙과 무관하며, 결과에 얽매이지 말고 자기 성찰의 한 관점으로만 참고하세요.</div>';
+  foot.innerHTML=''; addFoot('← 센터로', openCareer); addFoot('닫기', closeDialog, true);
+  showDialog();
+}
+
+
+/* ============================================================================
+   학과 안내·홍보 허브 (입구 게이트 / 🏫 학과 버튼) — 공식 링크 모음
+   ========================================================================== */
+function openWelcome(){
+  setDialog('🏫','linear-gradient(135deg,#0e2a5e,#d4af52)','안산대학교 물리치료학과','전문의료인 물리치료사 · Since 1982');
+  const body=document.getElementById('dlg-body'), foot=document.getElementById('dlg-foot');
+  let h='<div class="say"><span class="who">학과 안내 · 홍보</span>건강한 삶으로 치유하고 회복시키는 <b>전문의료인 물리치료사</b>를 양성합니다. 아래에서 학과의 다양한 정보를 만나보세요.</div>';
+  h+=jobLink('🏠 학과 홈페이지 메인','https://physi.ansan.ac.kr/physi',true);
+  h+=jobLink('📖 학과 소개 · 비전/교육목표','https://physi.ansan.ac.kr/physi/content/1',false);
+  h+=jobLink('📘 교육과정 · 로드맵','https://physi.ansan.ac.kr/physi/roadmap',false);
+  h+=jobLink('👩‍🏫 교수진 소개','https://physi.ansan.ac.kr/physi/professor',false);
+  h+=jobLink('🎽 전공동아리 소개','https://physi.ansan.ac.kr/physi/circle',false);
+  h+=jobLink('📰 학과뉴스 · 포토갤러리','https://physi.ansan.ac.kr/physi/board/3',false);
+  h+=jobLink('💼 대학일자리플러스센터 (진로·취업)','https://job.ansan.ac.kr/job',false);
+  h+=jobLink('▶ 학과 홍보영상 (YouTube)','https://www.youtube.com/watch?v=i1GJbMdRMuE',false);
+  h+=jobLink('🚁 안산대 캠퍼스 VR 항공뷰','https://www.ansan.ac.kr/site/resource/ansan/vrtour/tour.html',false);
+  h+='<div class="expl"><span class="tag">문의</span>안산대학교 성실관 205호 물리치료학과 · Tel 031-363-6943</div>';
+  body.innerHTML=h; foot.innerHTML=''; addFoot('🚁 캠퍼스 안내(VR)', openCampusTour); addFoot('닫기', closeDialog, true); showDialog();
+}
+try{ document.getElementById('deptBtn').onclick=openWelcome; }catch(e){}
+
+
+/* ===== 안산대학교 캠퍼스 안내 (VR 항공뷰) — 안산대 전체 캠퍼스 ===== */
+function openCampusTour(){
+  setDialog('🚁','linear-gradient(135deg,#2b6cb0,#0e2a5e)','안산대학교 캠퍼스 안내','VR 항공뷰 · ANSAN UNIVERSITY');
+  const body=document.getElementById('dlg-body'), foot=document.getElementById('dlg-foot');
+  let h='<div class="say"><span class="who">캠퍼스 안내</span>물리치료학과(성실관 205호)가 자리한 <b>안산대학교</b> 전체 캠퍼스입니다. 항공뷰(VR)로 360° 둘러보세요.</div>';
+  h+=jobLink('🚁 안산대 캠퍼스 VR 항공뷰 투어','https://www.ansan.ac.kr/site/resource/ansan/vrtour/tour.html',true);
+  h+=jobLink('🏫 안산대학교 홈페이지','https://www.ansan.ac.kr',false);
+  h+='<div class="say"><span class="who">🏛️ 교육·행정</span><b>성실관</b> — 물리치료학과(205호) · <b>대학본관</b> · 예지관 · 자유관 · 진리관 · 강석봉기념관</div>';
+  h+='<div class="say"><span class="who">📚 학생·복지</span>학생회관 · 도서관 · 채플관 · 웰니스센터 · 창업보육센터</div>';
+  h+='<div class="say"><span class="who">🌳 야외·체육</span>대학정문 · 잔디광장 · 운동장 · 농구장 · 테니스장</div>';
+  body.innerHTML=h; foot.innerHTML=''; addFoot('← 학과 안내로', openWelcome); addFoot('닫기', closeDialog, true); showDialog();
+}
+
+
+/* ============================================================================
+   SCENE PROPS — 분수대 · 학생 휴게공간 · 물리치료학과 학술제 부스
+   ========================================================================== */
+const REST = { x:1250, y:1140 };
+const FESTIVAL = [
+  { x:700,  y:350,  c:'#c8506a', n:'학술제' },
+  { x:1300, y:350,  c:'#3a72c4', n:'포스터' },
+  { x:140,  y:1150, c:'#4a8f5a', n:'체험부스' },
+  { x:560,  y:1150, c:'#d08a2e', n:'물치제' }
+];
+
+function drawFountain(x,y){
+  var t=performance.now()/1000;
+  ctx.fillStyle='#bcae86';ctx.beginPath();ctx.ellipse(x,y,60,36,0,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#2b6b7a';ctx.beginPath();ctx.ellipse(x,y,52,30,0,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#3f97a8';ctx.beginPath();ctx.ellipse(x,y,40,22,0,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#cfc19a';ctx.beginPath();ctx.ellipse(x,y-6,24,12,0,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#bcae86';ctx.fillRect(x-4,y-28,8,24);
+  ctx.fillStyle='#cfc19a';ctx.beginPath();ctx.ellipse(x,y-28,14,7,0,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#bcae86';ctx.fillRect(x-3,y-44,6,16);
+  ctx.fillStyle='#cfc19a';ctx.beginPath();ctx.ellipse(x,y-44,8,4,0,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle='rgba(185,232,242,.7)';ctx.lineWidth=2;
+  for(var i=0;i<7;i++){ var a=i/7*Math.PI*2; var r=16+Math.sin(t*3+i)*3;
+    ctx.beginPath();ctx.moveTo(x,y-48);ctx.quadraticCurveTo(x+Math.cos(a)*r*0.6,y-62-Math.sin(t*2+i)*4,x+Math.cos(a)*r,y-34);ctx.stroke(); }
+  ctx.fillStyle='#eafaff';
+  for(var j=0;j<10;j++){ var a2=t*2+j; var rr=12+((t*40+j*13)%20); ctx.globalAlpha=Math.max(0,1-rr/32);
+    ctx.beginPath();ctx.arc(x+Math.cos(a2)*rr,y-34+Math.sin(a2*1.3)*4,1.6,0,Math.PI*2);ctx.fill(); }
+  ctx.globalAlpha=1;
+  ctx.strokeStyle='rgba(205,242,250,.8)';ctx.lineWidth=2.4;ctx.beginPath();ctx.moveTo(x,y-50);ctx.lineTo(x,y-60-Math.sin(t*4)*3);ctx.stroke();
+}
+
+function drawParasol(x,y,col){
+  ctx.fillStyle='rgba(0,0,0,.18)';ctx.beginPath();ctx.ellipse(x,y+14,16,5,0,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#cbb48a';ctx.beginPath();ctx.ellipse(x,y+8,12,5,0,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle='#8a7350';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(x,y+6);ctx.lineTo(x,y-16);ctx.stroke();
+  ctx.fillStyle=col;ctx.beginPath();ctx.moveTo(x-18,y-14);ctx.lineTo(x+18,y-14);ctx.lineTo(x,y-30);ctx.closePath();ctx.fill();
+  ctx.fillStyle='rgba(255,255,255,.25)';ctx.beginPath();ctx.moveTo(x-6,y-14);ctx.lineTo(x+6,y-14);ctx.lineTo(x,y-26);ctx.closePath();ctx.fill();
+}
+
+function drawRest(){
+  var x=REST.x, y=REST.y;
+  ctx.fillStyle='#caa877';drawRoundRect(x-82,y-46,164,92,12);ctx.fill();
+  ctx.strokeStyle='#a8895c';ctx.lineWidth=1;for(var i=-72;i<82;i+=14){ctx.beginPath();ctx.moveTo(x+i,y-46);ctx.lineTo(x+i,y+46);ctx.stroke();}
+  ctx.fillStyle='#0b224e';drawRoundRect(x-58,y-64,116,20,6);ctx.fill();ctx.strokeStyle='#d4af52';ctx.lineWidth=1.5;drawRoundRect(x-58,y-64,116,20,6);ctx.stroke();
+  ctx.fillStyle='#f4ead0';ctx.font='bold 12px '+FSAN;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('🌿 학생 휴게공간',x,y-54);
+  drawParasol(x-42,y-4,'#7fb0e0'); drawParasol(x+44,y,'#e0b04b');
+  ctx.fillStyle='#7a5a34';ctx.fillRect(x-72,y+30,42,6);ctx.fillStyle='#664c2a';ctx.fillRect(x-72,y+22,42,4);
+  ctx.fillStyle='#2f5d3a';ctx.beginPath();ctx.arc(x+66,y+30,10,0,Math.PI*2);ctx.arc(x+54,y+34,8,0,Math.PI*2);ctx.fill();
+}
+
+function drawBooth(x,y,col,label){
+  ctx.fillStyle='rgba(0,0,0,.2)';drawRoundRect(x-32,y+18,64,8,5);ctx.fill();
+  ctx.fillStyle='#f4ead0';ctx.fillRect(x-30,y-6,60,26);
+  ctx.fillStyle='#caa877';ctx.fillRect(x-30,y+16,60,5);
+  ctx.strokeStyle='#8a7350';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(x-28,y+20);ctx.lineTo(x-28,y-6);ctx.moveTo(x+28,y+20);ctx.lineTo(x+28,y-6);ctx.stroke();
+  for(var i=0;i<6;i++){ctx.fillStyle=(i%2)?col:'#f7f0e0';ctx.fillRect(x-30+i*10,y-20,10,14);}
+  ctx.fillStyle=col;ctx.beginPath();ctx.moveTo(x-34,y-6);ctx.lineTo(x+34,y-6);ctx.lineTo(x+30,y-2);ctx.lineTo(x-30,y-2);ctx.closePath();ctx.fill();
+  ctx.fillStyle='#0b224e';drawRoundRect(x-30,y-34,60,14,5);ctx.fill();
+  ctx.fillStyle='#f4ead0';ctx.font='bold 9px '+FSAN;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(label,x,y-27);
+}
+function drawFestival(){ for(var k=0;k<FESTIVAL.length;k++){ var f=FESTIVAL[k]; drawBooth(f.x,f.y,f.c,f.n); } }
+
+
+/* ===== overview(전체보기) + 성별 캐릭터 ===== */
+state.overview=false;
+try{ document.getElementById('mapBtn').onclick=function(){ state.overview=!state.overview; var b=document.getElementById('mapBtn'); if(b) b.classList.toggle('on', state.overview); }; }catch(e){}
+(function(){
+  var FEM=new Set(['아이유','손예진','제니','카리나','지수','아이린','하니','태연','이영지','수지','류진','장원영']);
+  try{ students.forEach(function(s){ s.sex=FEM.has(s.name)?'f':'m'; }); }catch(e){}
+  try{ professors.forEach(function(p){ p.sex=(p.name.indexOf('김신영')===0)?'f':'m'; }); }catch(e){}
+  try{ if(typeof staff!=='undefined') staff.forEach(function(s){ s.sex='f'; }); }catch(e){}
+})();
+
+/* center camera initially */
+cam.x = clamp(player.x-VW/2,0,Math.max(0,WORLD.w-VW));
+cam.y = clamp(player.y-VH/2,0,Math.max(0,WORLD.h-VH));
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
