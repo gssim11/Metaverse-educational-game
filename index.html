@@ -202,6 +202,22 @@
     .say{font-size:13.5px}
     .joblink{font-size:13px;padding:11px 13px}
   }
+  /* --- 조작 안내 툴팁 + 안전영역 --- */
+  #ctrlhint{position:fixed;left:50%;bottom:150px;transform:translateX(-50%) translateY(12px);z-index:40;max-width:92vw;width:max-content;
+    background:linear-gradient(135deg,rgba(11,34,78,.96),rgba(7,19,46,.96));border:1px solid rgba(212,175,82,.5);
+    border-radius:14px;padding:12px 34px 12px 14px;color:#eaf0ff;font-family:var(--san);font-size:13px;line-height:1.55;
+    box-shadow:0 10px 30px rgba(0,0,0,.5);opacity:0;pointer-events:none;transition:opacity .3s ease,transform .3s ease}
+  #ctrlhint.show{opacity:1;transform:translateX(-50%) translateY(0);pointer-events:auto}
+  #ctrlhint .ch-title{font-weight:700;color:#f0d488;margin-bottom:4px;font-size:12px}
+  #ctrlhint #ctrlhint-x{position:absolute;top:5px;right:9px;background:none;border:none;color:#9fb0d0;font-size:19px;cursor:pointer;line-height:1}
+  #ctrlhint b{color:#fff}
+  @supports(padding:env(safe-area-inset-top)){
+    #hud{top:calc(14px + env(safe-area-inset-top,0px));left:calc(14px + env(safe-area-inset-left,0px))}
+    #topright{top:calc(14px + env(safe-area-inset-top,0px));right:calc(14px + env(safe-area-inset-right,0px))}
+    #touchpad{left:calc(20px + env(safe-area-inset-left,0px));bottom:calc(24px + env(safe-area-inset-bottom,0px))}
+    #btnE{right:calc(20px + env(safe-area-inset-right,0px));bottom:calc(24px + env(safe-area-inset-bottom,0px))}
+    #ctrlhint{bottom:calc(150px + env(safe-area-inset-bottom,0px))}
+  }
 </style>
 </head>
 <body>
@@ -230,6 +246,7 @@
     <button class="btn" id="fastBtn" title="시간 배속">⏩ 1×</button>
     <button class="btn" id="ollamaBtn" title="Ollama 로컬 LLM 연결">🧠 AI 엔진</button>
     <button class="btn" id="mapBtn" title="캠퍼스 한눈에 보기">🗺️ 전체보기 ✨</button>
+    <button class="btn" id="recenterBtn" title="내 캐릭터로 화면 복귀">📍 내 위치</button>
     <button class="btn" id="deptBtn" title="안산대 물리치료학과 안내·홍보">🏫 학과</button>
     <button class="btn" id="achBtn">🏆 도전과제</button>
     <button class="btn" id="helpBtn">❔ 도움말</button>
@@ -244,6 +261,7 @@
   <div id="touchpad"><div id="touchknob"></div></div>
   <button id="btnE" aria-label="상호작용">E<br>상호작용</button>
   <div id="toast"></div>
+<div id="ctrlhint"><button id="ctrlhint-x" aria-label="닫기">×</button><div class="ch-title">🎮 조작 안내</div><div class="ch-body"></div></div>
 </div>
 
 <!-- Intro -->
@@ -837,7 +855,7 @@ function render(){
   ctx.clearRect(0,0,VW,VH);
   ctx.save();
   if(state.overview){ var _sc=Math.min(VW/WORLD.w, VH/WORLD.h)*0.98; ctx.translate((VW-WORLD.w*_sc)/2,(VH-WORLD.h*_sc)/2); ctx.scale(_sc,_sc); }
-  else { ctx.translate(-cam.x, -cam.y); }
+  else { var Z=window.camZoom||1; var ccx=cam.x+VW/2, ccy=cam.y+VH/2; ctx.translate(VW/2,VH/2); ctx.scale(Z,Z); ctx.translate(-ccx,-ccy); }
   drawGround();
   BUILDINGS.forEach(drawBuilding);
   funDrawProps();
@@ -845,6 +863,7 @@ function render(){
   const ents = allChars.slice().sort((a,b)=>a.y-b.y);
   ents.forEach(drawChar);
   funDrawTop();
+  if(typeof drawGuide==='function') drawGuide();
   // interaction ring
   if (state.near && !state.spectate){
     const p = state.near.type==='building' ? doorOf(state.near.ref) : state.near.ref;
@@ -892,6 +911,7 @@ function hidePrompt(){ document.getElementById('prompt').style.display='none'; }
 
 function tryInteract(){
   if (!state.near) return;
+  try{ if(navigator.vibrate) navigator.vibrate(15); }catch(_v){}
   const n = state.near;
   if (n.type==='prof') openProf(n.ref);
   else if (n.type==='building') openHall(n.ref);
@@ -1145,6 +1165,7 @@ document.getElementById('ol-save').onclick = async ()=>{
 let last=performance.now();
 function loop(now){
   let dt=(now-last)/1000; last=now; if(dt>0.05) dt=0.05; if(dt<0) dt=0;
+  if(state.entered){ if(!window._loaded){ window._loaded=true; try{loadProg();}catch(e){} } window._saveT=(window._saveT||0)+dt; if(window._saveT>2){ window._saveT=0; try{saveProg();}catch(e){} } }
 
   // clock advances (faster during spectate / timeScale)
   if (state.entered){
@@ -1163,6 +1184,7 @@ function loop(now){
     if (keys['arrowdown']||keys['s']||keys['ㄴ']) vy+=1;
     { const tv=window.touchVec; if(tv){ vx+=tv.x; vy+=tv.y; } }
     if (vx||vy){
+      player.mt=null;
       const m=Math.hypot(vx,vy)||1; vx/=m; vy/=m;
       const nx=clamp(player.x+vx*playerSpd()*dt, 20, WORLD.w-20);
       const ny=clamp(player.y+vy*playerSpd()*dt, 20, WORLD.h-20);
@@ -1170,6 +1192,20 @@ function loop(now){
       if(!collidesBuilding(player.x,ny)) player.y=ny;
       player.moving=true; player.walk+=dt*12;
       player.dir = Math.abs(vx)>Math.abs(vy) ? (vx>0?'right':'left') : (vy>0?'down':'up');
+    }
+    else if (player.mt){
+      let dx=player.mt.x-player.x, dy=player.mt.y-player.y; const dd=Math.hypot(dx,dy)||1;
+      if(dd<12){ const _mi=player.mtI; player.mt=null; player.mtI=false; if(_mi){ updateNear(); tryInteract(); } }
+      else { dx/=dd; dy/=dd;
+        const nx=clamp(player.x+dx*playerSpd()*dt,20,WORLD.w-20);
+        const ny=clamp(player.y+dy*playerSpd()*dt,20,WORLD.h-20);
+        let mv=false;
+        if(!collidesBuilding(nx,player.y)){ player.x=nx; mv=true; }
+        if(!collidesBuilding(player.x,ny)){ player.y=ny; mv=true; }
+        player.moving=true; player.walk+=dt*12;
+        player.dir = Math.abs(dx)>Math.abs(dy) ? (dx>0?'right':'left') : (dy>0?'down':'up');
+        if(!mv){ player.mt=null; player.mtI=false; }
+      }
     }
   }
 
@@ -1188,10 +1224,13 @@ function loop(now){
     }
     focus = state.spectateTarget;
   }
-  const tcx = clamp(focus.x - VW/2, 0, Math.max(0,WORLD.w-VW));
-  const tcy = clamp(focus.y - VH/2, 0, Math.max(0,WORLD.h-VH));
-  cam.x += (tcx-cam.x)*Math.min(1, dt*6);
-  cam.y += (tcy-cam.y)*Math.min(1, dt*6);
+  var _po=window.panOffset||(window.panOffset={x:0,y:0});
+  if(player.moving){ _po.x*=0.86; _po.y*=0.86; if(Math.abs(_po.x)<0.5)_po.x=0; if(Math.abs(_po.y)<0.5)_po.y=0; }
+  const tcx = clamp(focus.x - VW/2, 0, Math.max(0,WORLD.w-VW)) + _po.x;
+  const tcy = clamp(focus.y - VH/2, 0, Math.max(0,WORLD.h-VH)) + _po.y;
+  var _lp = ((_po.x||_po.y)?12:6);
+  cam.x += (tcx-cam.x)*Math.min(1, dt*_lp);
+  cam.y += (tcy-cam.y)*Math.min(1, dt*_lp);
 
   updateNear();
   updateHUD();
@@ -1220,6 +1259,7 @@ function playerSpd(){ return player.speed * (state.buffT > 0 ? 1.35 : 1); }
 /* ---------- SFX (WebAudio, offline, guarded) ---------- */
 let _actx = null;
 function sfx(type){
+  try{ if((type==='ok'||type==='coin')&&navigator.vibrate) navigator.vibrate(type==='ok'?25:12); }catch(_v){}
   try{
     if(!_actx) _actx = new (window.AudioContext || window.webkitAudioContext)();
     if(_actx.state === 'suspended') _actx.resume();
@@ -1758,6 +1798,125 @@ try{ document.getElementById('mapBtn').onclick=function(){ state.overview=!state
   try{ students.forEach(function(s){ s.sex=FEM.has(s.name)?'f':'m'; }); }catch(e){}
   try{ professors.forEach(function(p){ p.sex=(p.name.indexOf('김신영')===0)?'f':'m'; }); }catch(e){}
   try{ if(typeof staff!=='undefined') staff.forEach(function(s){ s.sex='f'; }); }catch(e){}
+})();
+
+/* ===== 모바일/데스크톱: 핀치·휠 확대축소 + 드래그로 배경이동 + 탭 이동/상호작용 ===== */
+(function(){
+  var cv=document.getElementById('cv'); if(!cv) return;
+  window.camZoom=window.camZoom||1; window.panOffset=window.panOffset||{x:0,y:0};
+  function clampZ(z){ return Math.max(0.55, Math.min(2.4, z)); }
+  function clampP(v){ return Math.max(-1400, Math.min(1400, v)); }
+  window.recenterCam=function(){ window.panOffset.x=0; window.panOffset.y=0; };
+  cv.addEventListener('wheel', function(e){ if(state.overview) return; window.camZoom=clampZ((window.camZoom||1)*(e.deltaY<0?1.1:0.9)); e.preventDefault(); }, {passive:false});
+  var rb=document.getElementById('recenterBtn');
+  if(rb){ rb.addEventListener('click', function(){ window.recenterCam(); }); }
+  var md=false, mlx=0,mly=0, msx=0,msy=0, mmoved=false, mt0=0;
+  cv.addEventListener('mousedown', function(e){ md=true; mlx=msx=e.clientX; mly=msy=e.clientY; mmoved=false; mt0=Date.now(); });
+  window.addEventListener('mousemove', function(e){ if(!md) return; if(Math.abs(e.clientX-msx)+Math.abs(e.clientY-msy)>6) mmoved=true; if(mmoved){ var pz=window.camZoom||1,_po=window.panOffset; _po.x=clampP(_po.x-(e.clientX-mlx)/pz); _po.y=clampP(_po.y-(e.clientY-mly)/pz); mlx=e.clientX; mly=e.clientY; } });
+  window.addEventListener('mouseup', function(e){ if(md && !mmoved && (Date.now()-mt0)<350 && window.handleTap) window.handleTap(e.clientX,e.clientY); md=false; });
+  if(!(('ontouchstart' in window)||navigator.maxTouchPoints>0)) return;
+  var pin=null, dragId=null, lx=0, ly=0, sx=0, sy=0, moved=false, tt0=0;
+  function ft(list,id){ for(var i=0;i<list.length;i++) if(list[i].identifier===id) return list[i]; return null; }
+  cv.addEventListener('touchstart', function(e){
+    for(var i=0;i<e.changedTouches.length;i++){
+      var t=e.changedTouches[i];
+      if(dragId!==null && pin===null){
+        var t0t=ft(e.touches,dragId);
+        if(t0t){ pin={a:dragId,b:t.identifier,d0:(Math.hypot(t.clientX-t0t.clientX,t.clientY-t0t.clientY)||1),z0:(window.camZoom||1)}; dragId=null; }
+      } else if(dragId===null && pin===null){
+        dragId=t.identifier; lx=sx=t.clientX; ly=sy=t.clientY; moved=false; tt0=Date.now();
+      }
+    }
+    e.preventDefault();
+  }, {passive:false});
+  cv.addEventListener('touchmove', function(e){
+    if(pin){ var a=ft(e.touches,pin.a), b=ft(e.touches,pin.b);
+      if(a&&b){ var d=Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY)||1; window.camZoom=clampZ(pin.z0*(d/pin.d0)); } e.preventDefault(); return; }
+    if(dragId!==null){ var t=ft(e.changedTouches,dragId)||ft(e.touches,dragId);
+      if(t){ if(Math.abs(t.clientX-sx)+Math.abs(t.clientY-sy)>10) moved=true;
+        if(moved){ var pz=window.camZoom||1,_po=window.panOffset; _po.x=clampP(_po.x-(t.clientX-lx)/pz); _po.y=clampP(_po.y-(t.clientY-ly)/pz); lx=t.clientX; ly=t.clientY; }
+        e.preventDefault();
+      }
+    }
+  }, {passive:false});
+  function endT(e){ for(var i=0;i<e.changedTouches.length;i++){ var id=e.changedTouches[i].identifier;
+    if(pin&&(id===pin.a||id===pin.b)){ pin=null; }
+    if(id===dragId){ if(!moved && (Date.now()-tt0)<350 && window.handleTap){ var tt=e.changedTouches[i]; window.handleTap(tt.clientX,tt.clientY); } dragId=null; }
+  } }
+  cv.addEventListener('touchend', endT, {passive:false});
+  cv.addEventListener('touchcancel', endT, {passive:false});
+})();
+
+/* tap-to-move / tap-to-interact (top-level) */
+player.mt=null; player.mtI=false;
+function screenToWorld(cx,cy){ var Z=window.camZoom||1; return { x:(cx-VW/2)/Z + cam.x + VW/2, y:(cy-VH/2)/Z + cam.y + VH/2 }; }
+function tapApproach(wx,wy){
+  var R=48, best=null, bd=R;
+  professors.forEach(function(p){ var d=dist(wx,wy,p.x,p.y); if(d<bd){bd=d;best={x:p.x,y:p.y+30};} });
+  if(typeof staff!=='undefined') staff.forEach(function(p){ var d=dist(wx,wy,p.x,p.y); if(d<bd){bd=d;best={x:p.x,y:p.y+30};} });
+  for(var i=0;i<BUILDINGS.length;i++){ var b=BUILDINGS[i]; if(!b.subj&&!b.role) continue;
+    if(wx>b.x-12&&wx<b.x+b.w+12&&wy>b.y-72&&wy<b.y+b.h+46){ var dr=doorOf(b); best={x:dr.x,y:dr.y}; bd=0; break; } }
+  var props=[];
+  if(typeof CAFE!=='undefined')props.push({x:CAFE.x,y:CAFE.y+34});
+  if(typeof STAGE!=='undefined')props.push({x:STAGE.x,y:STAGE.y+34});
+  if(typeof ENTRANCE!=='undefined')props.push({x:ENTRANCE.x,y:ENTRANCE.y-40});
+  if(typeof pet!=='undefined')props.push({x:pet.x,y:pet.y+24});
+  for(var j=0;j<props.length;j++){ var d=dist(wx,wy,props[j].x,props[j].y); if(d<bd){bd=d;best=props[j];} }
+  return best;
+}
+window.handleTap=function(cx,cy){
+  if(!state.entered || anyModalOpen() || state.spectate || state.overview) return;
+  var w=screenToWorld(cx,cy);
+  var ap=tapApproach(w.x,w.y);
+  if(ap){ player.mt={x:clamp(ap.x,20,WORLD.w-20),y:clamp(ap.y,20,WORLD.h-20)}; player.mtI=true; }
+  else { player.mt={x:clamp(w.x,20,WORLD.w-20),y:clamp(w.y,20,WORLD.h-20)}; player.mtI=false; }
+};
+
+/* ===== 길 안내 화살표 · 진행 저장 · 조작 툴팁 · 백그라운드 일시정지 ===== */
+function drawGuide(){
+  if(!state.entered || state.spectate || state.overview) return;
+  var best=null, bd=1e9;
+  for(var i=0;i<BUILDINGS.length;i++){ var b=BUILDINGS[i]; if(!b.subj) continue; if(state.visited.has(b.subj)) continue;
+    var dr=doorOf(b); var d=dist(player.x,player.y,dr.x,dr.y); if(d<bd){bd=d;best=dr;} }
+  if(!best || bd<95) return;
+  var ang=Math.atan2(best.y-player.y, best.x-player.x);
+  var ax=player.x+Math.cos(ang)*44, ay=(player.y-30)+Math.sin(ang)*44;
+  var pulse=0.55+Math.sin(performance.now()/300)*0.28;
+  ctx.save(); ctx.translate(ax,ay); ctx.rotate(ang);
+  ctx.fillStyle='rgba(240,212,136,'+pulse.toFixed(2)+')';
+  ctx.beginPath(); ctx.moveTo(13,0); ctx.lineTo(-7,-8); ctx.lineTo(-3,0); ctx.lineTo(-7,8); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle='rgba(90,66,16,.85)'; ctx.lineWidth=1; ctx.stroke();
+  ctx.restore();
+}
+var SAVE_KEY='aupt_save_v1';
+function saveProg(){ try{ localStorage.setItem(SAVE_KEY, JSON.stringify({
+  score:state.score, correct:state.correct, coinCount:state.coinCount,
+  visited:Array.from(state.visited), talked: state.talkedNpcs?Array.from(state.talkedNpcs):[],
+  zoom: window.camZoom||1 })); }catch(e){} }
+function loadProg(){ var raw; try{ raw=localStorage.getItem(SAVE_KEY); }catch(e){ return; } if(!raw) return;
+  var d; try{ d=JSON.parse(raw); }catch(e){ return; } if(!d) return;
+  if(typeof d.score==='number') state.score=d.score;
+  if(typeof d.correct==='number') state.correct=d.correct;
+  if(typeof d.coinCount==='number') state.coinCount=d.coinCount;
+  if(Array.isArray(d.visited)) d.visited.forEach(function(v){ state.visited.add(v); });
+  if(Array.isArray(d.talked)&&state.talkedNpcs) d.talked.forEach(function(v){ state.talkedNpcs.add(v); });
+  if(typeof d.zoom==='number') window.camZoom=Math.max(0.55,Math.min(2.4,d.zoom));
+  try{ updateHUD(); }catch(e){} try{ if(typeof updateFunHUD==='function') updateFunHUD(); }catch(e){}
+  try{ if(state.visited.size>0) toast('이어하기 — 저장된 진행을 불러왔어요'); }catch(e){}
+}
+window.resetProg=function(){ try{ localStorage.removeItem(SAVE_KEY); }catch(e){} };
+document.addEventListener('visibilitychange', function(){ if(!document.hidden){ last=performance.now(); } });
+(function(){
+  function touchDev(){ return ('ontouchstart' in window)||navigator.maxTouchPoints>0; }
+  function showHint(){ var el=document.getElementById('ctrlhint'); if(!el) return; var b=el.querySelector('.ch-body');
+    b.innerHTML = touchDev()
+      ? '🕹️ <b>이동</b> 왼쪽 조이스틱 · 👆 <b>탭</b> 그곳으로 이동·상호작용<br>🤏 <b>확대·축소</b> 두 손가락 · ✋ <b>둘러보기</b> 화면 드래그 · 📍 <b>내 위치</b>로 복귀'
+      : '⌨️ <b>이동</b> WASD/화살표 · 🖱️ <b>클릭</b> 그곳으로 이동 · 🖲️ <b>휠</b> 확대·축소 · <b>E</b> 상호작용';
+    el.classList.add('show'); clearTimeout(el._t); el._t=setTimeout(function(){ el.classList.remove('show'); }, 7500); }
+  function rotHint(){ if(touchDev() && window.matchMedia && window.matchMedia('(orientation:portrait)').matches){ try{ toast('📱 가로로 돌리면 더 편해요'); }catch(e){} } }
+  var sb=document.getElementById('startBtn');
+  if(sb) sb.addEventListener('click', function(){ setTimeout(showHint,450); setTimeout(rotHint,1700); });
+  var x=document.getElementById('ctrlhint-x'); if(x) x.addEventListener('click', function(){ var el=document.getElementById('ctrlhint'); if(el) el.classList.remove('show'); });
 })();
 
 /* center camera initially */
