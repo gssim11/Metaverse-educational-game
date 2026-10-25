@@ -162,3 +162,12 @@ def test_pilot_example_sheet_averages_repeats(env):  # noqa: F811
         assert all(pt["repeats"] == 3 for pt in g["points"])
     rows = [x for x in V.average_repeats([{"subject": "A", "test": 1, "ref": 2}, {"subject": "A", "test": 3, "ref": 4}, {"subject": "", "test": 5, "ref": 5}])]
     assert rows[0] == {"label": "A", "test": 2.0, "ref": 3.0, "repeats": 2} and len(rows) == 2
+
+
+def test_jobs_claimed_in_enqueue_order(tmp_path):
+    import store as st
+    s = st.Store(tmp_path / "q")
+    ids = [s.enqueue("activity" if i % 2 else "kinetics", n=i)["id"] for i in range(50)]  # 같은 ms 안에 연속으로
+    assert ids == sorted(ids)
+    got = [st.claim_job(tmp_path / "q", {"activity", "kinetics"})["n"] for _ in range(50)]
+    assert got == list(range(50))

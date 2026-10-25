@@ -19,6 +19,17 @@ def now_ms() -> int:
     return int(time.time() * 1000)
 
 
+_last_job_ms = 0
+
+
+def _next_job_ms() -> int:
+    """작업 ID 앞부분(ms). 같은 ms 에 여러 작업을 넣어도 넣은 순서대로 정렬되도록 항상 증가시킨다."""
+    global _last_job_ms
+    with _lock:
+        _last_job_ms = max(now_ms(), _last_job_ms + 1)
+        return _last_job_ms
+
+
 def _write_json(path: Path, obj) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + f".{uuid.uuid4().hex[:6]}.tmp")
@@ -100,7 +111,7 @@ class Store:
 
     # ---------- 작업 큐 ----------
     def enqueue(self, kind: str, **params) -> dict:
-        job = {"id": f"{int(time.time() * 1000)}_{uuid.uuid4().hex[:8]}", "kind": kind, "state": "queued",
+        job = {"id": f"{_next_job_ms()}_{uuid.uuid4().hex[:8]}", "kind": kind, "state": "queued",
                "created": now_ms(), **params}
         _write_json(self.root / "jobs" / "queue" / f"{job['id']}.json", job)
         return job
