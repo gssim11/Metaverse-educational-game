@@ -7,32 +7,54 @@ import {
 
 const D = Math.PI / 180;
 
-// 측면에서 본 합성 인체 (월드: 미터, y 아래, 골반 중심). kneeFlex/hipFlex(도)
-function sideFrame(t, { kneeL = 0, kneeR = 0, hipL = 0, hipR = 0, ankL = 0, ankR = 0, footDxL = 0, footDxR = 0, liftL = 0, hipShiftX = 0 } = {}) {
+// 합성 인체 (MediaPipe 월드 좌표: 미터, x 오른쪽, y 아래, z 카메라에서 멀어지는 방향, 골반 중심).
+// 사람은 화면 오른쪽(+x)을 향해 서 있다 → 오른쪽 몸은 카메라 쪽(-z), 왼쪽은 +z.
+// hip/knee/ank/trunk: 굴곡각(도). camRoll/camPitch: 카메라 기울기(도). noise: 랜드마크 잡음 SD(m)
+export function sideFrame(t, {
+  kneeL = 0, kneeR = 0, hipL = 0, hipR = 0, ankL = 0, ankR = 0, trunk = 0,
+  footDxL = 0, footDxR = 0, liftL = 0, hipShiftX = 0, camRoll = 0, camPitch = 0, noise = 0, rnd = Math.random,
+} = {}) {
   const w = Array.from({ length: 33 }, () => ({ x: 0, y: 0, z: 0 }));
   const set = (i, x, y, z) => { w[i] = { x, y, z }; };
-  set(0, 0, -0.65, 0);
-  set(11, 0, -0.5, -0.18); set(12, 0, -0.5, 0.18);
-  set(13, 0, -0.22, -0.2); set(14, 0, -0.22, 0.2);
-  set(15, 0.02, 0.05, -0.2); set(16, 0.02, 0.05, 0.2);
+  // 체간: 골반 중심에서 앞으로 trunk 만큼 숙임
+  const ts = Math.sin(trunk * D), tc = Math.cos(trunk * D);
+  const T = (up, fwd = 0) => [fwd * tc + up * ts, -(up * tc) + fwd * ts]; // (x, y)
+  const [nx, ny] = T(0.65); set(0, nx, ny, 0);
+  const [sx, sy] = T(0.5); set(12, sx, sy, -0.18); set(11, sx, sy, 0.18);
+  set(14, sx, sy + 0.28, -0.2); set(13, sx, sy + 0.28, 0.2);
+  set(16, sx + 0.02, sy + 0.55, -0.2); set(15, sx + 0.02, sy + 0.55, 0.2);
   const leg = (hipI, kneeI, ankI, heelI, footI, z, hipF, kneeF, ankDf, dx, lift) => {
     set(hipI, 0, 0, z);
-    // 대퇴: 수직 아래에서 앞(+x)으로 hipF 회전
     const kx = 0.42 * Math.sin(hipF * D) + dx, ky = 0.42 * Math.cos(hipF * D) - lift;
     set(kneeI, kx, ky, z);
-    // 하퇴: 대퇴 방향에서 뒤로 kneeF 꺾임
-    const sa = (hipF - kneeF) * D;
+    const sa = (hipF - kneeF) * D; // 하퇴가 수직 아래에서 앞으로 기운 각
     const ax = kx + 0.4 * Math.sin(sa), ay = ky + 0.4 * Math.cos(sa);
     set(ankI, ax, ay, z);
-    set(heelI, ax - 0.05, ay + 0.03, z);
-    // 발: 하퇴에 수직(90°) + 배측굴곡 ankDf 만큼 안쪽으로
-    const fa = sa - (90 - ankDf) * D;
-    set(footI, ax + 0.18 * Math.sin(fa + Math.PI), ay + 0.18 * Math.cos(fa + Math.PI), z);
+    // 하퇴 좌표: d = 아래(하퇴 방향), f = 앞. 발은 중립에서 뒤꿈치-발끝 선이 하퇴에 수직
+    const d = [Math.sin(sa), Math.cos(sa)], f = [Math.cos(sa), -Math.sin(sa)];
+    const a = ankDf * D; // 배측굴곡: 발끝이 정강이 쪽(-d)으로
+    const f2 = [Math.cos(a) * f[0] - Math.sin(a) * d[0], Math.cos(a) * f[1] - Math.sin(a) * d[1]];
+    const d2 = [Math.sin(a) * f[0] + Math.cos(a) * d[0], Math.sin(a) * f[1] + Math.cos(a) * d[1]];
+    const P = (u, v) => [ax + u * f2[0] + v * d2[0], ay + u * f2[1] + v * d2[1]];
+    const [hx, hy] = P(-0.05, 0.06); set(heelI, hx, hy, z);
+    const [tx, ty] = P(0.17, 0.06); set(footI, tx, ty, z);
   };
-  leg(23, 25, 27, 29, 31, -0.1, hipL, kneeL, ankL, footDxL, liftL);
-  leg(24, 26, 28, 30, 32, 0.1, hipR, kneeR, ankR, footDxR, 0);
-  const lm = w.map((p) => ({ x: 0.5 + hipShiftX + p.x * 0.35 + p.z * 0.05, y: 0.45 + p.y * 0.35, z: 0, visibility: 0.99 }));
-  return { t, lm, wlm: w, w: 1000, h: 1000 };
+  leg(24, 26, 28, 30, 32, -0.1, hipR, kneeR, ankR, footDxR, 0);
+  leg(23, 25, 27, 29, 31, 0.1, hipL, kneeL, ankL, footDxL, liftL);
+  // 카메라 기울기: 롤(z축), 피치(x축)
+  const cr = Math.cos(camRoll * D), sr = Math.sin(camRoll * D), cp = Math.cos(camPitch * D), sp = Math.sin(camPitch * D);
+  const g = () => (noise ? noise * Math.sqrt(-2 * Math.log(rnd() + 1e-12)) * Math.cos(2 * Math.PI * rnd()) : 0);
+  const wl = w.map((p) => {
+    let { x, y, z } = p;
+    [x, y] = [cr * x - sr * y, sr * x + cr * y];
+    [y, z] = [cp * y - sp * z, sp * y + cp * z];
+    return { x: x + g(), y: y + g(), z: z + g() };
+  });
+  const lm = w.map((p) => {
+    const X = p.x * 0.35 + p.z * 0.05, Y = p.y * 0.35;
+    return { x: 0.5 + hipShiftX + cr * X - sr * Y, y: 0.45 + sr * X + cr * Y, z: 0, visibility: 0.99 };
+  });
+  return { t, lm, wlm: wl, w: 1000, h: 1000 };
 }
 
 test('jointAngle: 직각', () => {
@@ -158,4 +180,90 @@ test('findPeaks / 대칭지수', () => {
   assert.equal(findPeaks(y, { minDist: 10, minProm: 0.5 }).length, 3);
   assert.equal(symmetryIndex(100, 100), 0);
   assert.ok(Math.abs(symmetryIndex(90, 110) - 20) < 1e-9);
+});
+
+// ---------- 역기구학·보정 ----------
+import { toMOT } from '../web/js/ik.js';
+
+function lcg(seed = 1) { let s = seed >>> 0; return () => ((s = (1664525 * s + 1013904223) >>> 0) / 4294967296); }
+const at = (S, key, tt) => S.series[key][Math.min(S.t.length - 1, Math.round(tt * S.fs))];
+const rmse = (a, b) => Math.sqrt(a.reduce((s, v, i) => s + (v - b[i]) ** 2, 0) / a.length);
+
+// 바르게 선 1초 + 스쿼트
+function squatTrial({ camRoll = 0, camPitch = 0, trunkAt = 0, noise = 0, seed = 7 } = {}) {
+  const rnd = lcg(seed), frames = [], truth = [];
+  for (let i = 0; i < 30 * 5; i++) {
+    const t = i / 30;
+    const ph = t < 1 ? 0 : 0.5 - 0.5 * Math.cos(2 * Math.PI * (t - 1) / 2);
+    const k = 2 + 98 * ph, h = 1 + 79 * ph, a = 25 * ph, tr = trunkAt * ph;
+    truth.push({ t, k, h, a, tr });
+    frames.push(sideFrame(t, { kneeL: k, kneeR: k, hipL: h, hipR: h, ankL: a, ankR: a, trunk: tr, camRoll, camPitch, noise, rnd }));
+  }
+  return { frames, truth };
+}
+
+test('IK: 무릎·고관절·발목 복원 (오차 < 2.5°)', () => {
+  const { frames, truth } = squatTrial();
+  const S = buildSeries(frames, { cutoff: 6 });
+  for (const tr of truth.filter((_, i) => i % 10 === 5)) {
+    assert.ok(Math.abs(at(S, 'kneeFlexR', tr.t) - tr.k) < 2.5, `knee ${at(S, 'kneeFlexR', tr.t)} vs ${tr.k}`);
+    assert.ok(Math.abs(at(S, 'hipFlexL', tr.t) - tr.h) < 2.5, `hip ${at(S, 'hipFlexL', tr.t)} vs ${tr.h}`);
+    assert.ok(Math.abs(at(S, 'ankleDfR', tr.t) - tr.a) < 2.5, `ankle ${at(S, 'ankleDfR', tr.t)} vs ${tr.a}`);
+  }
+  assert.ok(S.cal.calibrated);
+  assert.ok(Math.abs(at(S, 'hipAddR', 2)) < 3 && Math.abs(at(S, 'hipRotR', 2)) < 5, 'no spurious frontal/transverse motion');
+});
+
+test('보정: 카메라 롤 8°·피치 10° 기울어져도 체간·발목 각 유지', () => {
+  const { frames, truth } = squatTrial({ camRoll: 8, camPitch: 10, trunkAt: 25 });
+  const S = buildSeries(frames, { cutoff: 6 });
+  assert.ok(S.cal.calibrated);
+  const tilt = Math.acos(-S.cal.up[1]) * 180 / Math.PI;
+  assert.ok(Math.abs(tilt - 12.8) < 1.5, `tilt ${tilt}`);
+  assert.ok(Math.abs(S.cal.roll * 180 / Math.PI - 8) < 1.5, `roll ${S.cal.roll * 180 / Math.PI}`);
+  const mid = truth[90];
+  assert.ok(Math.abs(at(S, 'trunkLean', mid.t) - mid.tr) < 3, `trunk ${at(S, 'trunkLean', mid.t)} vs ${mid.tr}`);
+  assert.ok(Math.abs(at(S, 'ankleDfL', 0.5)) < 2, `ankle zero ${at(S, 'ankleDfL', 0.5)}`);
+  assert.ok(Math.abs(at(S, 'kneeFlexL', mid.t) - mid.k) < 2.5);
+});
+
+test('고관절 굴곡: 체간을 숙여도 체간-대퇴 각이 아닌 대퇴 각으로 측정', () => {
+  const frames = Array.from({ length: 60 }, (_, i) => sideFrame(i / 30, i < 30 ? {} : { hipL: 60, hipR: 60, kneeL: 70, kneeR: 70, trunk: 35 }));
+  const S = buildSeries(frames, { cutoff: 6 });
+  const h = at(S, 'hipFlexR', 1.8);
+  assert.ok(Math.abs(h - 60) < 3, `hip ${h}`); // 체간-대퇴 각이면 95°
+  assert.ok(Math.abs(at(S, 'lumbarFlex', 1.8) - 35) < 4, `lumbar ${at(S, 'lumbarFlex', 1.8)}`);
+});
+
+test('잡음 1.5cm: 역기구학이 단순 3점 각도보다 정확', () => {
+  const { frames, truth } = squatTrial({ noise: 0.015, seed: 3 });
+  const S = buildSeries(frames, { cutoff: 6 });
+  const rawK = filtfilt(frames.map((f) => computeAngles(f).kneeFlexR), 6, 30);
+  const rawA = filtfilt(frames.map((f) => computeAngles(f).ankleDfR), 6, 30);
+  const ikK = truth.map((tr) => at(S, 'kneeFlexR', tr.t)), ikA = truth.map((tr) => at(S, 'ankleDfR', tr.t));
+  const k = truth.map((tr) => tr.k), a = truth.map((tr) => tr.a);
+  const eIK = rmse(ikK, k), eRaw = rmse(rawK, k), eIKa = rmse(ikA, a), eRawa = rmse(rawA, a);
+  console.log(`  knee RMSE IK ${eIK.toFixed(2)}° vs raw ${eRaw.toFixed(2)}° · ankle IK ${eIKa.toFixed(2)}° vs raw ${eRawa.toFixed(2)}°`);
+  assert.ok(eIK < eRaw && eIKa < eRawa);
+});
+
+test('MOT 내보내기', () => {
+  const { frames } = squatTrial();
+  const S = buildSeries(frames);
+  const mot = toMOT(S.t, S.series).split('\n');
+  assert.equal(mot[5], 'endheader');
+  assert.ok(mot[6].startsWith('time\tpelvis_tilt'));
+  assert.equal(mot[7].split('\t').length, mot[6].split('\t').length);
+});
+
+test('가려진 관절은 값을 비움 (초깃값을 측정값처럼 내보내지 않음)', () => {
+  const frames = Array.from({ length: 40 }, (_, i) => {
+    const f = sideFrame(i / 30, { kneeL: 30, kneeR: 30 });
+    for (const j of [25, 26, 27, 28, 29, 30, 31, 32]) f.lm[j].visibility = 0.1; // 다리 가림
+    return f;
+  });
+  const S = buildSeries(frames);
+  assert.ok(S.series.kneeFlexR.every((v) => !Number.isFinite(v)));
+  assert.ok(S.series.ankleDfL.every((v) => !Number.isFinite(v)));
+  assert.ok(S.series.elbowFlexR.some(Number.isFinite));
 });

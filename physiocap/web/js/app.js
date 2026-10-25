@@ -1,4 +1,5 @@
 import { ANGLES, PROTOCOLS, LM, computeAngles, OneEuro, analyze, toCSV, landmarksCSV, toTRC } from './analysis.js';
+import { toMOT } from './ik.js';
 import { createPose, toFrame } from './pose.js';
 import { LineChart, PALETTE } from './chart.js';
 import { saveSession, listSessions, getSession, deleteSession } from './store.js';
@@ -39,7 +40,47 @@ const SHORT = {
   kneeFlexL: '무릎L', kneeFlexR: '무릎R', hipFlexL: '고관절L', hipFlexR: '고관절R', ankleDfL: '발목L', ankleDfR: '발목R',
   fppaL: 'FPPA L', fppaR: 'FPPA R', trunkLean: '체간', trunkLateral: '체간측방', pelvicObliq: '골반경사',
   shoulderElevL: '어깨L', shoulderElevR: '어깨R', elbowFlexL: '팔꿈치L', elbowFlexR: '팔꿈치R',
+  hipAddL: '내전L', hipAddR: '내전R', hipRotL: '내회전L', hipRotR: '내회전R',
+  lumbarFlex: '요추굴곡', lumbarBend: '요추측굴', pelvisRot: '골반회전',
 };
+
+// ---------- 분석 (Web Worker, 실패 시 화면 스레드) ----------
+let worker = null, workerSeq = 0;
+const pending = new Map();
+function getWorker() {
+  if (worker !== null) return worker;
+  try {
+    worker = new Worker(new URL('./worker.js', import.meta.url), { type: 'module' });
+    worker.onmessage = (e) => {
+      const p = pending.get(e.data.id);
+      if (!p) return;
+      pending.delete(e.data.id);
+      e.data.ok ? p.res(e.data.out) : p.rej(new Error(e.data.error));
+    };
+    worker.onerror = () => { for (const p of pending.values()) p.rej(new Error('worker')); pending.clear(); worker = false; };
+  } catch { worker = false; }
+  return worker;
+}
+async function analyzeAsync(frames, protocol, opts) {
+  const w = getWorker();
+  if (w) {
+    try {
+      return await new Promise((res, rej) => {
+        const id = ++workerSeq;
+        pending.set(id, { res, rej });
+        w.postMessage({ id, frames, protocol, opts });
+      });
+    } catch (e) { console.warn('워커 분석 실패, 화면 스레드에서 재시도', e); }
+  }
+  await new Promise((r) => setTimeout(r, 30));
+  return analyze(frames, protocol, opts);
+}
+function showAnalyzing(text) {
+  show('processing');
+  $('#procTitle').textContent = '역기구학 분석 중…';
+  $('#procBar').style.width = '100%';
+  $('#procText').textContent = text || '보정 자세 → 체형 스케일링 → 관절각 계산';
+}
 
 // ---------- 공통 UI ----------
 function show(id) {
@@ -295,7 +336,6 @@ async function toggleRecord() {
   }
   cd.hidden = true;
   $('#btnRec').disabled = false;
-  speak('시작');
   cap.frames = [];
   cap.reps = 0;
   cap.phase = 'up'; // STS도 앉은 자세(>65°)를 먼저 확인한 뒤 기립을 센다
@@ -304,6 +344,12 @@ async function toggleRecord() {
   cap.recording = true;
   $('#btnRec').classList.add('on');
   startVideoRecorder();
+  // 보정 자세: 기록 첫 1.3초 동안 바르게 서기 (앉아서 시작하는 STS 제외 — STS는 기립 구간으로 자동 보정)
+  if (cap.protocol !== 'sts') {
+    cd.hidden = false; cd.style.fontSize = '42px'; cd.textContent = '바르게 서 주세요';
+    speak('바르게 서 주세요');
+    setTimeout(() => { cd.hidden = true; cd.style.fontSize = ''; if (cap.recording) speak('시작'); }, 1300);
+  } else speak('시작');
   const tick = () => {
     if (!cap.recording) return;
     const s = (performance.now() - cap.t0) / 1000;
@@ -421,7 +467,8 @@ async function finishSession({ frames, protocol, source, videoBlob = null, video
     settings: { model: settings.model, height: settings.height, cutoff: settings.cutoff, fps: settings.fps },
     frames,
   };
-  const analysis = analyze(frames, protocol, analyzeOpts());
+  showAnalyzing();
+  const analysis = await analyzeAsync(frames, protocol, analyzeOpts());
   session.result = analysis.result;
   const ok = await saveSession(session);
   if (!ok) toast('기기 저장 공간에 기록을 저장하지 못했습니다(결과는 볼 수 있음).');
@@ -432,7 +479,8 @@ async function finishSession({ frames, protocol, source, videoBlob = null, video
 async function openSession(id) {
   const s = await getSession(id);
   if (!s) { toast('기록을 불러오지 못했습니다.'); return; }
-  const analysis = analyze(s.frames, s.protocol, { fs: 30, cutoff: Number(s.settings?.cutoff) || 6, heightM: Number(s.settings?.height) > 0 ? Number(s.settings.height) / 100 : 0 });
+  showAnalyzing('저장된 기록을 다시 분석합니다');
+  const analysis = await analyzeAsync(s.frames, s.protocol, { fs: 30, cutoff: Number(s.settings?.cutoff) || 6, heightM: Number(s.settings?.height) > 0 ? Number(s.settings.height) / 100 : 0 });
   showResults(s, analysis, { videoURL: null, overlay: false });
 }
 
@@ -569,12 +617,22 @@ function overlayLoop() {
       const ctx = c.getContext('2d');
       ctx.clearRect(0, 0, c.width, c.height);
       const f = nearestFrame(frames, t);
-      if (f?.lm) drawSkeleton(ctx, f.lm, c.width, c.height, { angles: computeAngles(f), scale: c.width / 720 });
+      if (f?.lm) drawSkeleton(ctx, f.lm, c.width, c.height, { angles: seriesAt(t), scale: c.width / 720 });
       view.chart?.setCursor(t);
     }
     view.raf = requestAnimationFrame(tick);
   };
   view.raf = requestAnimationFrame(tick);
+}
+
+// 결과 그래프와 같은 값(역기구학·필터 적용)을 재생 화면에 표시
+function seriesAt(sec) {
+  const S = view.analysis.series;
+  const i = Math.round(sec * S.fs);
+  if (i < 0 || i >= S.t.length) return null;
+  const o = {};
+  for (const k in S.series) o[k] = S.series[k][i];
+  return o;
 }
 
 function nearestFrame(frames, t) {
@@ -611,6 +669,7 @@ async function exportAs(kind) {
   switch (kind) {
     case 'csv': return saveFile(base + '_angles.csv', 'text/csv', '﻿' + toCSV(S));
     case 'lm': return saveFile(base + '_landmarks.csv', 'text/csv', landmarksCSV(frames));
+    case 'mot': return saveFile(base + '_ik.mot', 'text/plain', toMOT(S.t, S.series, base + '_ik.mot'));
     case 'trc': return saveFile(base + '.trc', 'text/plain', toTRC(frames, { fs: 30, name: base + '.trc', heightM: Number(view.session.settings?.height) > 0 ? Number(view.session.settings.height) / 100 : 0 }));
     case 'json': return saveFile(base + '.json', 'application/json', JSON.stringify({ app: 'PhysioCap', ...view.analysis.result, settings: view.session.settings }, null, 2));
     case 'video': if (view.videoBlob) return saveFile(base + (view.videoBlob.type.includes('mp4') ? '.mp4' : '.webm'), view.videoBlob.type, view.videoBlob); return;

@@ -1,4 +1,5 @@
 // PhysioCap 분석 엔진 — 브라우저와 Node(테스트) 양쪽에서 쓰는 순수 함수 모음.
+import { calibrate, scaleModel, runIK, unrollPoint } from './ik.js';
 // 입력: MediaPipe Pose Landmarker 프레임 목록
 //   { t: 초, lm: [{x,y,z,visibility}] (정규화 이미지 좌표), wlm: [{x,y,z}] (미터, 골반 중심) , w, h }
 
@@ -16,19 +17,26 @@ export const LANDMARK_NAMES = [
   'LKnee', 'RKnee', 'LAnkle', 'RAnkle', 'LHeel', 'RHeel', 'LBigToe', 'RBigToe',
 ];
 
-// 각도 채널 정의. src: 'w' = 3D 월드 좌표, 'i' = 2D 이미지 좌표(픽셀 비율 보정)
+// 각도 채널 정의. 결과 분석은 역기구학(ik.js) 값, 실시간 표시는 computeAngles 근사값을 쓴다.
 export const ANGLES = [
   { key: 'kneeFlexL', label: '무릎 굴곡 L', unit: '°', group: 'knee' },
   { key: 'kneeFlexR', label: '무릎 굴곡 R', unit: '°', group: 'knee' },
-  { key: 'hipFlexL', label: '고관절 굴곡 L', unit: '°', group: 'hip' },
-  { key: 'hipFlexR', label: '고관절 굴곡 R', unit: '°', group: 'hip' },
+  { key: 'hipFlexL', label: '고관절 굴곡 L (골반 중립 가정)', unit: '°', group: 'hip' },
+  { key: 'hipFlexR', label: '고관절 굴곡 R (골반 중립 가정)', unit: '°', group: 'hip' },
+  { key: 'hipAddL', label: '고관절 내전 L', unit: '°', group: 'hip' },
+  { key: 'hipAddR', label: '고관절 내전 R', unit: '°', group: 'hip' },
+  { key: 'hipRotL', label: '고관절 내회전 L', unit: '°', group: 'hip' },
+  { key: 'hipRotR', label: '고관절 내회전 R', unit: '°', group: 'hip' },
   { key: 'ankleDfL', label: '발목 배측굴곡 L', unit: '°', group: 'ankle' },
   { key: 'ankleDfR', label: '발목 배측굴곡 R', unit: '°', group: 'ankle' },
   { key: 'fppaL', label: '무릎 FPPA L (+외반)', unit: '°', group: 'frontal' },
   { key: 'fppaR', label: '무릎 FPPA R (+외반)', unit: '°', group: 'frontal' },
-  { key: 'trunkLean', label: '체간 기울기', unit: '°', group: 'trunk' },
-  { key: 'trunkLateral', label: '체간 측방 기울기', unit: '°', group: 'frontal' },
-  { key: 'pelvicObliq', label: '골반 경사(전두면)', unit: '°', group: 'frontal' },
+  { key: 'trunkLean', label: '체간 기울기(수직 대비)', unit: '°', group: 'trunk' },
+  { key: 'trunkLateral', label: '체간 측방 기울기 (+오른쪽)', unit: '°', group: 'frontal' },
+  { key: 'lumbarFlex', label: '요추 굴곡(골반 대비 체간)', unit: '°', group: 'trunk' },
+  { key: 'lumbarBend', label: '요추 측굴 (+오른쪽)', unit: '°', group: 'trunk' },
+  { key: 'pelvicObliq', label: '골반 경사 (+오른쪽 하강)', unit: '°', group: 'frontal' },
+  { key: 'pelvisRot', label: '골반 회전(시작 대비)', unit: '°', group: 'trunk' },
   { key: 'shoulderElevL', label: '어깨 거상 L', unit: '°', group: 'upper' },
   { key: 'shoulderElevR', label: '어깨 거상 R', unit: '°', group: 'upper' },
   { key: 'elbowFlexL', label: '팔꿈치 굴곡 L', unit: '°', group: 'upper' },
@@ -77,11 +85,21 @@ export function computeAngles(frame) {
     const knee = s === 'L' ? L.lKnee : L.rKnee;
     const ank = s === 'L' ? L.lAnkle : L.rAnkle;
     const foot = s === 'L' ? L.lFoot : L.rFoot;
+    const heel = s === 'L' ? L.lHeel : L.rHeel;
     const elb = s === 'L' ? L.lElbow : L.rElbow;
     const wr = s === 'L' ? L.lWrist : L.rWrist;
     if (ok(hip, knee, ank)) out['kneeFlex' + s] = 180 - jointAngle(P(hip), P(knee), P(ank));
-    if (ok(sh, hip, knee)) out['hipFlex' + s] = 180 - jointAngle(P(sh), P(hip), P(knee));
-    if (ok(knee, ank, foot)) out['ankleDf' + s] = 90 - jointAngle(P(knee), P(ank), P(foot)); // 하퇴-발 90° = 0, 발등이 정강이 쪽으로 가까워지면 +
+    // 고관절 굴곡(골반 중립 가정): 대퇴와 수직선 사이 각, 전방이면 +. 전방 = 위 × (좌→우 고관절)
+    if (ok(hip, knee, L.lHip, L.rHip)) {
+      const th = sub(P(knee), P(hip));
+      const lat = sub(P(L.rHip), P(L.lHip));
+      const up = [0, -1, 0];
+      const fwd = [up[1] * lat[2] - up[2] * lat[1], up[2] * lat[0] - up[0] * lat[2], up[0] * lat[1] - up[1] * lat[0]];
+      const a = vecAngle(th, [0, 1, 0]);
+      out['hipFlex' + s] = dot(th, fwd) >= 0 ? a : -a;
+    }
+    // 발목 배측굴곡: 하퇴(발목→무릎)와 발 장축(뒤꿈치→발끝)이 90°일 때 0, 발끝이 올라가면 +
+    if (ok(knee, ank, heel, foot)) out['ankleDf' + s] = 90 - vecAngle(sub(P(knee), P(ank)), sub(P(foot), P(heel)));
     if (ok(sh, elb, wr)) out['elbowFlex' + s] = 180 - jointAngle(P(sh), P(elb), P(wr));
     if (ok(hip, sh, elb)) out['shoulderElev' + s] = jointAngle(P(hip), P(sh), P(elb));
     if (ok(L.lHip, L.rHip, hip, knee, ank)) out['fppa' + s] = fppa(I(hip), I(knee), I(ank), mid(I(L.lHip), I(L.rHip))[0]);
@@ -267,16 +285,37 @@ export function findPeaks(y, { minDist = 1, minProm = 0, minHeight = -Infinity }
 
 // ---------- 세션 처리 ----------
 // frames → 균일 시계열 { fs, t, series: {key: []}, pts2d, scale }
+// 화면 기울기(roll)를 되돌린 2D 프레임 사본
+function unrollFrame(f, roll) {
+  if (!f.lm || !roll) return f;
+  const asp = (f.w || 1) / (f.h || 1);
+  const lm = f.lm.map((p) => {
+    const [x, y] = unrollPoint(p.x * asp, p.y, roll, asp / 2, 0.5);
+    return { ...p, x: x / asp, y };
+  });
+  return { ...f, lm };
+}
+
 export function buildSeries(frames, { fs = 30, cutoff = 6, heightM = 0 } = {}) {
   const good = frames.filter((f) => f.lm && f.wlm);
   const t = frames.map((f) => f.t);
+  // 1) 보정 → 2) 스케일링 → 3) 역기구학
+  const cal = calibrate(frames);
+  const model = scaleModel(frames, cal, heightM);
+  const ik = runIK(frames, model, cal);
+  const roll = cal.calibrated ? cal.roll : 0;
   const raw = {};
   for (const a of ANGLES) raw[a.key] = [];
-  const extra = { hipX: [], hipY: [], lAnkX: [], rAnkX: [], lAnkY: [], rAnkY: [], lHeelY: [], rHeelY: [] };
+  const extra = { hipX: [], hipY: [], lAnkX: [], rAnkX: [], lAnkY: [], rAnkY: [], lHeelY: [], rHeelY: [], ikErr: [] };
   const scales = [];
-  for (const f of frames) {
-    const ang = f.lm && f.wlm ? computeAngles(f) : null;
-    for (const a of ANGLES) raw[a.key].push(ang ? ang[a.key] : NaN);
+  for (let fi = 0; fi < frames.length; fi++) {
+    const f = unrollFrame(frames[fi], roll);
+    const k = ik[fi];
+    const ang = f.lm && f.wlm ? computeAngles(f) : null; // 2D 지표(FPPA)용
+    for (const a of ANGLES) {
+      const v = a.group === 'frontal' && a.key.startsWith('fppa') ? ang?.[a.key] : k?.[a.key];
+      raw[a.key].push(Number.isFinite(v) ? v : NaN);
+    }
     const L = LM;
     if (f.lm && visible(f.lm, L.lHip, L.rHip)) {
       const asp = (f.w || 1) / (f.h || 1);
@@ -289,6 +328,7 @@ export function buildSeries(frames, { fs = 30, cutoff = 6, heightM = 0 } = {}) {
       extra.rAnkY.push(v(L.rAnkle) ? v(L.rAnkle).y : NaN);
       extra.lHeelY.push(v(L.lHeel) ? v(L.lHeel).y : NaN);
       extra.rHeelY.push(v(L.rHeel) ? v(L.rHeel).y : NaN);
+      extra.ikErr.push(k ? k.ikErr : NaN);
       // 축척: 월드 다리 길이(m) / 이미지 다리 길이(정규화 높이 단위)
       const sc = legScale(f, asp, heightM);
       if (Number.isFinite(sc)) scales.push(sc);
@@ -307,7 +347,7 @@ export function buildSeries(frames, { fs = 30, cutoff = 6, heightM = 0 } = {}) {
   }
   scales.sort((a, b) => a - b);
   const scale = scales.length ? scales[Math.floor(scales.length / 2)] : NaN; // 미터 / (정규화 y 단위)
-  return { fs, t: tu || [], series, scale, validFrames: good.length, totalFrames: frames.length };
+  return { fs, t: tu || [], series, scale, validFrames: good.length, totalFrames: frames.length, cal, model };
 }
 
 // Winter 인체 분절 비율: 대퇴 0.245H + 하퇴 0.246H
@@ -394,6 +434,22 @@ export function analyze(frames, protocol = 'free', opts = {}) {
     M(label + ' 대칭지수', r1(si), '%', { flag: si > 15 ? 'warn' : '' });
   };
   if (res.detectionRate < 70) res.notes.push('신체 검출률이 낮습니다. 전신이 화면에 들어오도록 거리·조명을 조정하세요.');
+  // 보정·역기구학 품질
+  const cal = S.cal;
+  res.calibration = {
+    calibrated: !!cal?.calibrated,
+    cameraTilt: cal?.calibrated ? r1(Math.acos(Math.max(-1, Math.min(1, -cal.up[1]))) * 180 / Math.PI) : null,
+    roll: cal?.calibrated ? r1(cal.roll * 180 / Math.PI) : null,
+    standingSec: cal?.standing ? r2(frames[cal.standing.end].t - frames[cal.standing.start].t) : 0,
+  };
+  if (cal?.calibrated) res.notes.push(`보정 자세(${res.calibration.standingSec}s)로 수직축을 맞췄습니다. 카메라 기울기 ${res.calibration.cameraTilt}°(화면 회전 ${res.calibration.roll}°)를 보정했습니다.`);
+  else res.notes.push(`보정 자세를 찾지 못했습니다(${cal?.reason || ''}). 기록 시작 직후 1초간 바르게 서 있으면 카메라 기울기와 발목 영점이 자동 보정됩니다.`);
+  const ikE = stats(S.series.ikErr || []);
+  res.ikError = r1(ikE.mean);
+  if (Number.isFinite(ikE.mean)) {
+    M('모델 적합 오차(평균)', r1(ikE.mean), 'cm', { flag: ikE.mean > 4 ? 'warn' : '' });
+    if (ikE.mean > 4) res.notes.push('모델 적합 오차가 큽니다. 랜드마크가 흔들렸거나 일부 관절이 가려졌을 수 있습니다.');
+  }
 
   if (protocol === 'squat') {
     const knee = avg2(s.kneeFlexL, s.kneeFlexR);
@@ -408,6 +464,8 @@ export function analyze(frames, protocol = 'free', opts = {}) {
       trunk: r1(s.trunkLean[rp.peak]),
       fppaL: r1(stats(s.fppaL.slice(rp.start, rp.end + 1)).max),
       fppaR: r1(stats(s.fppaR.slice(rp.start, rp.end + 1)).max),
+      addL: r1(s.hipAddL[rp.peak]), addR: r1(s.hipAddR[rp.peak]),
+      rotL: r1(s.hipRotL[rp.peak]), rotR: r1(s.hipRotR[rp.peak]),
     }));
     M('반복 횟수', res.reps.length, '회');
     if (res.reps.length) {
@@ -420,6 +478,8 @@ export function analyze(frames, protocol = 'free', opts = {}) {
       M('최저점 체간 기울기', mean('trunk'), '°');
       M('최대 FPPA L (+외반)', mean('fppaL'), '°', { flag: mean('fppaL') > 10 ? 'warn' : '' });
       M('최대 FPPA R (+외반)', mean('fppaR'), '°', { flag: mean('fppaR') > 10 ? 'warn' : '' });
+      M('최저점 고관절 내전 L / R', `${mean('addL')} / ${mean('addR')}`, '°');
+      M('최저점 고관절 내회전 L / R', `${mean('rotL')} / ${mean('rotR')}`, '°');
       M('평균 반복 시간', mean('duration'), 's');
       M('하강/상승 시간', `${mean('descent')} / ${mean('ascent')}`, 's');
     } else res.notes.push('스쿼트 반복이 검출되지 않았습니다(무릎 굴곡 45° 이상 필요).');
