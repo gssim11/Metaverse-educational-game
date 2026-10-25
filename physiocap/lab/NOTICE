@@ -16,3 +16,22 @@ Dashboard 3D viewer uses three.js r160 (MIT, vendored under dashboard/vendor/thr
 Bone meshes are not stored in this repository; the server image downloads them at
 build time from the OpenSim models repository:
   https://github.com/opensim-org/opensim-models/tree/master/Geometry
+
+Files derived from opencap-core (Apache License 2.0), modified by PhysioCap contributors in 2026:
+  - mmpose_cpu/loop_mmpose_cpu.py — based on opencap-core mmpose/loop_mmpose.py at commit
+    e5d29f12e725a2e14e6e4e85617834685f738753. Changes: no GPU check at start; compute device
+    taken from PHYSIOCAP_POSE_DEVICE (default cpu); smaller batch and all CPU threads on CPU;
+    per-step timing in the log. Same models, threshold and input/output files.
+  - mmpose_cpu/benchmark_pose.py — new timing script that calls opencap-core's
+    detection_inference and pose_inference on a clip of OpenCap's public test video
+    (downloaded at run time from stanfordnmbl/opencap-test-data; not redistributed here).
+
+Third-party software inside the Docker images (built from upstream sources at install time,
+not stored in this repository). Anyone who redistributes the built images must follow
+these licenses as well:
+  - CasADi (kinetics image, via opencap-processing): GNU LGPL v3
+  - FFmpeg in the core image (Ubuntu package 3.4.11): built with --enable-gpl and libx264,
+    so the binary is under the GNU GPL. The server image installs Debian's ffmpeg package;
+    check its build configuration ("ffmpeg -version") before redistributing that image too.
+  - OpenSim 4.5 (conda): Apache-2.0; OpenSimAD libraries: Apache-2.0
+  - mmpose / mmdetection (pose image): Apache-2.0
