@@ -82,6 +82,10 @@ docker compose run --rm core python3.8 /workspace/physiocap/selftest.py
    - **보행** (`gait_analysis`, 오른발·왼발 기준 주기 각각): 보행 속도, 활보장, 보장, 보장 대칭, 보폭 너비, 분속수, 입각기·유각기 시간, 단하지·양하지 지지(%), 유각 중기 배측굴곡, 유각 중기 발목 높이 차, 보행 주기 정규화(0–100%) 관절각 평균 ± 표준편차, 발뒤꿈치 닿기(HS)·발끝 떼기(TO) 시점
    - **앉았다 일어서기** (`sts_analysis`): 일어서기 시간, 1회 시간, 이륙 전·이륙 시 체간 기울기와 각속도(회차별), 숙임·일어서기 시작·기립 완료·앉음 시점
    - 이벤트 시점은 관절각 그래프에 점선으로 표시됩니다. 지표 분석(수 초)은 동역학(수십 분)보다 먼저 실행됩니다.
+10. **정확도 검증**: "정확도 검증" 탭에서 기준 장비 결과와 비교합니다. 절차·판정 기준·표본 수는 [VALIDATION.md](VALIDATION.md)를 보세요.
+    - 시계열: 3D 모캡 IK(.mot), IMU, 지면반력판 파일을 올리면 시간 차이를 자동으로 맞추고 관절별 편향·MAE·RMSE·95% 일치한계를 계산합니다. Bland–Altman 그림도 그립니다.
+    - 이산값: 고니오미터 기록지(CSV)를 올리면 항목별 일치한계와 ICC(2,1)·ICC(3,1)(95% 신뢰구간)를 계산합니다.
+    - 누적 요약표는 동작별 MAE를 OpenCap 논문 값과 나란히 보여 줍니다. 모바일 앱 각도 CSV도 같은 방식으로 비교할 수 있습니다.
 
 촬영 요령은 OpenCap의 [best practices](https://www.opencap.ai/best-pratices)와 같습니다. 두 영상의 동기화가 실패하면, 시작할 때 한 손을 어깨 위로 빠르게 들었다 내리면 됩니다(OpenCap 권장 방법).
 
@@ -97,6 +101,7 @@ docker compose run --rm core python3.8 /workspace/physiocap/selftest.py
 
 - **"렌즈 보정이 안 된 기종"**: 그 폰으로 렌즈 보정을 먼저 하세요. 프레임률(60/30fps)이 바뀌면 다른 설정으로 취급됩니다.
 - **"영상이 가로입니다"**: 폰을 세로로 세워 촬영하세요.
+- **처리가 멈춘 것 같을 때**: 처리 중에 워커 컨테이너가 재시작되면, 그 작업은 워커가 다시 켜질 때 자동으로 대기열로 돌아가 처음부터 다시 처리됩니다(`requeued interrupted jobs` 로그).
 - **로그 보기**: `docker compose logs -f core`, `docker compose logs -f kinetics`
 - **데이터 위치**: Docker 볼륨 `physiocap-lab_physiocap-data`의 `/data/physiocap/Data/<세션>/`. 폴더 구조가 OpenCap과 같아 opencap-processing 예제 스크립트도 그대로 쓸 수 있습니다.
 

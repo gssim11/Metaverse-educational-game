@@ -130,13 +130,16 @@ def scaled_model_exists(data_root, session: str) -> bool:
 def read_mot(path: str | os.PathLike) -> dict:
     """OpenSim .mot/.sto 를 {columns, data} 로 읽는다 (헤더 'endheader' 이후 탭 구분)."""
     with open(path) as f:
-        lines = f.read().splitlines()
+        return read_mot_text(f.read())
+
+
+def read_mot_text(text: str) -> dict:
+    lines = text.splitlines()
     try:
         start = next(i for i, l in enumerate(lines) if l.strip().lower() == "endheader") + 1
     except StopIteration:
         start = 0
-    cols = lines[start].split("\t") if start < len(lines) else []
-    cols = [c.strip() for c in cols]
+    cols = [c.strip() for c in lines[start].split("\t")] if start < len(lines) else []
     data = []
     for l in lines[start + 1:]:
         if not l.strip():

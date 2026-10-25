@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 
 import layout as L
 import meshes as M
+import validation as VAL
 import video as V
 from store import Store, now_ms
 
@@ -511,6 +512,170 @@ def files(path: str):
     if not str(p).startswith(str((DATA / "Data").resolve())) or not p.is_file():
         raise HTTPException(404)
     return FileResponse(p)
+
+
+# ---------------------------------------------------------------- 정확도 검증 (VALIDATION.md)
+def _val_dir() -> Path:
+    d = DATA / "validation"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _floats(s: str) -> list[float] | None:
+    s = (s or "").strip()
+    if not s:
+        return None
+    v = [float(x) for x in s.replace(";", ",").split(",") if x.strip()]
+    if len(v) != 2 or v[1] <= v[0]:
+        raise HTTPException(400, "구간은 '시작,끝'(초) 형식이어야 합니다.")
+    return v
+
+
+def _upload_text(f: UploadFile) -> str:
+    raw = f.file.read(50 * 1024 * 1024 + 1)
+    if len(raw) > 50 * 1024 * 1024:
+        raise HTTPException(413, "파일이 너무 큽니다(50MB 이하).")
+    return raw.decode("utf-8-sig", errors="replace")
+
+
+def _lab_series(sid: str, tid: str, source: str) -> dict:
+    if source == "grf":
+        p = L.dynamics_dir(DATA, sid, tid) / "physiocap_summary.json"
+        if not p.exists():
+            raise HTTPException(409, "이 시행의 동역학 결과가 없습니다.")
+        return VAL.series_from_summary(_read(p), "GRF_BW")
+    mot = L.kinematics_mot(DATA, sid, tid)
+    if not mot.exists():
+        raise HTTPException(409, "이 시행의 관절각(.mot)이 없습니다.")
+    return VAL.read_table(mot.read_text(), mot.name)
+
+
+def _save_validation(rec: dict) -> dict:
+    import json
+    rec["id"] = "val_" + time.strftime("%Y%m%d_%H%M%S") + "_" + uuid.uuid4().hex[:4]
+    rec["created"] = now_ms()
+    (_val_dir() / f"{rec['id']}.json").write_text(json.dumps(rec, ensure_ascii=False))
+    return rec
+
+
+@app.post("/api/validation/series")
+def validation_series(reference: UploadFile = File(...), test_file: UploadFile | None = File(None),
+                      session: str = Form(""), trial: str = Form(""), source: str = Form("kinematics"),
+                      activity: str = Form("other"), label: str = Form(""), align_on: str = Form(""),
+                      window: str = Form(""), columns: str = Form(""), remove_offset: bool = Form(False),
+                      max_lag_s: float = Form(5.0)):
+    """기준 장비 시계열(.mot/.sto/.csv) vs PhysioCap(랩 시행 또는 모바일 내보내기 파일)."""
+    if source not in ("kinematics", "grf"):
+        raise HTTPException(400, "source 는 kinematics 또는 grf")
+    try:
+        ref = VAL.read_table(_upload_text(reference), reference.filename or "")
+        if test_file is not None and test_file.filename:
+            test = VAL.read_table(_upload_text(test_file), test_file.filename)
+            origin = {"file": test_file.filename}
+        elif session and trial:
+            get_session(session)
+            test = _lab_series(session, trial, source)
+            origin = {"session": session, "trial": trial}
+        else:
+            raise HTTPException(400, "랩 시행(session·trial) 또는 비교할 파일을 지정하세요.")
+        cols = [c.strip() for c in columns.split(",") if c.strip()] or None
+        res = VAL.compare_series(test, ref, columns=cols, align_on=align_on.strip() or None, window=_floats(window),
+                                 max_lag_s=max_lag_s, remove_offset=remove_offset,
+                                 unit="%BW" if source == "grf" else "deg")
+    except (ValueError, KeyError, IndexError) as e:
+        raise HTTPException(400, f"비교할 수 없습니다: {e}")
+    return _save_validation({"kind": "series", "source": source, "activity": activity, "label": label,
+                             "reference": reference.filename, "test": origin, "result": res,
+                             "options": {"align_on": align_on, "window": window, "columns": columns,
+                                         "remove_offset": remove_offset}})
+
+
+@app.post("/api/validation/discrete")
+def validation_discrete(sheet: UploadFile = File(...), label: str = Form(""), activity: str = Form("other")):
+    """고니오미터 기록지(templates/goniometer_record.csv) → 항목별 편향·MAE·LoA·ICC.
+
+    행마다 test_value 가 있으면 그 값을, 없으면 session·trial 의 관절각 시계열에서 mode(at/max/min/mean)로 값을 뽑는다.
+    """
+    import csv
+    import io
+    rows = list(csv.DictReader(io.StringIO(_upload_text(sheet))))
+    if not rows:
+        raise HTTPException(400, "기록지에 행이 없습니다.")
+    cache: dict = {}
+    groups: dict[str, list[dict]] = {}
+    for i, r in enumerate(rows, start=2):
+        r = {k.strip(): (v or "").strip() for k, v in r.items() if k}
+        try:
+            coord, mode = r["coordinate"], (r.get("mode") or "max").lower()
+            ref_v = float(r["reference_deg"])
+            if r.get("test_value"):
+                tv = float(r["test_value"])
+            else:
+                key = (r["session"], r["trial"])
+                if key not in cache:
+                    get_session(r["session"])
+                    cache[key] = _lab_series(r["session"], r["trial"], "kinematics")
+                t0 = float(r["t_start"]) if r.get("t_start") else None
+                t1 = float(r["t_end"]) if r.get("t_end") else None
+                win = [t0, t1] if (t0 is not None and t1 is not None) else None
+                tv = VAL.value_at(cache[key], coord, mode, t=t0, window=None if mode == "at" else win)
+        except HTTPException:
+            raise
+        except (KeyError, ValueError, TypeError) as e:
+            raise HTTPException(400, f"{i}행을 읽을 수 없습니다: {e}")
+        groups.setdefault(f"{coord}|{mode}", []).append(
+            {"label": r.get("subject", "") + (" " + r.get("trial", "") if r.get("trial") else ""), "test": tv, "ref": ref_v})
+    res = {}
+    for g, items in groups.items():
+        res[g] = VAL.compare_discrete(items)
+        res[g]["unit"] = "deg"
+    return _save_validation({"kind": "discrete", "source": "kinematics", "activity": activity, "label": label,
+                             "reference": sheet.filename, "result": {"groups": res}})
+
+
+@app.get("/api/validation")
+def validation_list():
+    import json
+    out = []
+    for p in sorted(_val_dir().glob("val_*.json"), reverse=True):
+        try:
+            r = json.loads(p.read_text())
+        except ValueError:
+            continue
+        brief = {k: r.get(k) for k in ("id", "kind", "source", "activity", "label", "reference", "test", "created")}
+        if r.get("kind") == "series":
+            brief["summary"] = r["result"]["summary"]
+        out.append(brief)
+    return out
+
+
+@app.get("/api/validation/summary")
+def validation_summary():
+    import json
+    recs = []
+    for p in _val_dir().glob("val_*.json"):
+        try:
+            recs.append(json.loads(p.read_text()))
+        except ValueError:
+            pass
+    return VAL.aggregate(recs)
+
+
+@app.get("/api/validation/{vid}")
+def validation_get(vid: str):
+    p = _val_dir() / f"{L.safe_name(vid)}.json"
+    if not p.exists():
+        raise HTTPException(404)
+    return FileResponse(p, media_type="application/json")
+
+
+@app.delete("/api/validation/{vid}")
+def validation_delete(vid: str):
+    p = _val_dir() / f"{L.safe_name(vid)}.json"
+    if not p.exists():
+        raise HTTPException(404)
+    p.unlink()
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------- 렌즈 보정(기종별 1회)

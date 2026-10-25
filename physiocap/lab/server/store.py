@@ -150,3 +150,25 @@ def finish_job(root: str | Path, job: dict, ok: bool, error: str | None = None, 
         src.unlink()
     except FileNotFoundError:
         pass
+
+
+def requeue_orphans(root: str | Path, kinds: set[str]) -> list[str]:
+    """워커 시작 시 호출: 이전 실행이 끝내지 못하고 running 에 남긴 작업을 queue 로 되돌린다.
+
+    종류(kind)마다 워커가 하나뿐이라는 전제(docker-compose 기본값)에서만 안전하다.
+    """
+    moved = []
+    for p in sorted((Path(root) / "jobs" / "running").glob("*.json")):
+        j = _read_json(p)
+        if not j or j.get("kind") not in kinds:
+            continue
+        j["state"] = "queued"
+        j["requeued"] = int(j.get("requeued", 0)) + 1
+        j.pop("started", None)
+        _write_json(Path(root) / "jobs" / "queue" / p.name, j)
+        try:
+            p.unlink()
+        except FileNotFoundError:
+            pass
+        moved.append(j["id"])
+    return moved

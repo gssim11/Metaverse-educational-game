@@ -1,0 +1,149 @@
+"""정확도 검증 통계와 API 테스트."""
+import json
+
+import numpy as np
+import pytest
+
+import validation as V
+from test_server import env, register  # noqa: F401  (fixture 재사용)
+
+
+def mot_text(t, cols: dict) -> str:
+    names = list(cols)
+    head = ["x.mot", "version=1", f"nRows={len(t)}", f"nColumns={len(names) + 1}", "inDegrees=yes", "endheader",
+            "\t".join(["time"] + names)]
+    rows = ["\t".join([f"{t[i]:.5f}"] + [f"{cols[c][i]:.5f}" for c in names]) for i in range(len(t))]
+    return "\n".join(head + rows) + "\n"
+
+
+def knee(t):
+    return 30 + 25 * np.sin(2 * np.pi * 0.8 * t) + 8 * np.sin(2 * np.pi * 2.1 * t)
+
+
+# ---------------------------------------------------------------- 통계
+def test_icc_matches_shrout_fleiss_table():
+    # Shrout & Fleiss 1979 표 2 예제(대상 6 × 평가자 4): ICC(2,1)=0.29, ICC(3,1)=0.71
+    sf = [[9, 2, 5, 8], [6, 1, 3, 2], [8, 4, 6, 8], [7, 1, 2, 6], [10, 5, 6, 9], [6, 2, 4, 7]]
+    r = V.icc_matrix(sf)
+    assert r["icc2_1"]["value"] == pytest.approx(0.29, abs=0.005)
+    assert r["icc3_1"]["value"] == pytest.approx(0.71, abs=0.005)
+    # 신뢰구간: pingouin 0.15.x 출력과 대조한 값 (ICC(A,1) [0.02, 0.76], ICC(C,1) [0.34, 0.95])
+    assert r["icc2_1"]["ci"] == pytest.approx([0.02, 0.76], abs=0.005)
+    assert r["icc3_1"]["ci"] == pytest.approx([0.34, 0.95], abs=0.005)
+
+
+def test_agreement_known_bias():
+    rng = np.random.default_rng(0)
+    ref = rng.normal(50, 10, 4000)
+    test = ref + 2.0 + rng.normal(0, 1.0, 4000)
+    a = V.agreement(test - ref, test, ref)
+    assert a["bias"] == pytest.approx(2.0, abs=0.1)
+    assert a["sd"] == pytest.approx(1.0, abs=0.05)
+    assert a["loa_high"] - a["loa_low"] == pytest.approx(2 * 1.96 * a["sd"])
+    assert a["rmse"] ** 2 == pytest.approx(a["bias"] ** 2 + a["sd"] ** 2 * (a["n"] - 1) / a["n"], rel=1e-6)
+
+
+def test_alignment_recovers_lag_and_error():
+    # 기준 장비가 PhysioCap 보다 1.25초 늦게 녹화를 시작 → 기준 시각 τ 의 자세 = PhysioCap 시각 τ+1.25 의 자세
+    t = np.arange(0, 8, 0.01)
+    lag = 1.25
+    test = {"time": t.tolist(), "cols": {"knee_angle_r": knee(t).tolist()}}
+    rt = np.arange(0, 8, 1 / 120)  # 모캡 120 Hz
+    rng = np.random.default_rng(1)
+    ref = {"time": rt.tolist(), "cols": {"knee_angle_r": (knee(rt + lag) - 3.0 + rng.normal(0, 0.5, rt.size)).tolist()}}
+    res = V.compare_series(test, ref, align_on="knee_angle_r", max_lag_s=3)
+    assert res["alignment"]["lag_s"] == pytest.approx(lag, abs=0.01)
+    k = res["columns"]["knee_angle_r"]
+    assert k["bias"] == pytest.approx(3.0, abs=0.1)
+    assert k["mae"] == pytest.approx(3.0, abs=0.15)
+    assert len(k["ba"]) <= 300
+    # 영점(정적 차이) 제거 옵션이면 편향이 사라진다
+    res2 = V.compare_series(test, ref, align_on="knee_angle_r", max_lag_s=3, remove_offset=True)
+    assert abs(res2["columns"]["knee_angle_r"]["bias"]) < 0.05
+
+
+def test_read_table_mobile_csv_mapping_and_mot():
+    csv = "﻿time_s,kneeFlexR,lumbarFlex,fppaR\n0,10,5,1\n0.1,12,6,\n0.2,14,7,2\n"
+    d = V.read_table(csv, "a_angles.csv")
+    assert d["cols"]["knee_angle_r"] == [10, 12, 14]
+    assert d["cols"]["lumbar_extension"] == [-5, -6, -7]  # 굴곡(+) → OpenSim 신전(+) 부호 반전
+    assert "fppaR" not in d["cols"]  # OpenSim 대응이 없는 2D 지표는 제외
+    m = V.read_table(mot_text([0, 0.1, 0.2], {"pelvis_tx": [0, 0.01, 0.02]}), "x.mot")
+    assert m["cols"]["pelvis_tx"] == [0, 0.01, 0.02]
+
+
+def test_sample_size_inverse():
+    n = V.n_for_loa_precision(sd=3.0, halfwidth=1.0)
+    assert V.loa_ci_halfwidth(3.0, n) <= 1.0 < V.loa_ci_halfwidth(3.0, n - 1)
+
+
+def test_aggregate_against_benchmark():
+    recs = [{"kind": "series", "source": "kinematics", "activity": "walking",
+             "result": {"columns": {"knee_angle_r": {"mae": m}, "pelvis_tx": {"mae": 20}}}} for m in (3.0, 5.0)]
+    a = V.aggregate(recs)["activities"]["walking"]
+    assert a["columns"]["knee_angle_r"] == {"mae_mean": 4.0, "n_trials": 2}
+    assert "pelvis_tx" not in a["columns"]
+    assert a["opencap_benchmark_mae"] == 4.1
+
+
+# ---------------------------------------------------------------- API
+def _session_with_kinematics(appmod, c, t, cols):
+    register(c, "a"); register(c, "b")
+    s = c.post("/api/sessions", json={"subject": {"height_m": 1.7, "mass_kg": 65}, "cameras": {"Cam0": "a", "Cam1": "b"}}).json()
+    p = appmod.L.kinematics_mot(appmod.DATA, s["id"], "walk1")
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(mot_text(t, cols))
+    return s["id"]
+
+
+def test_validation_api_series_and_discrete(env):  # noqa: F811
+    appmod, c, _ = env
+    t = np.arange(0, 6, 0.01)
+    sid = _session_with_kinematics(appmod, c, t, {"knee_angle_r": knee(t), "hip_flexion_r": 0.5 * knee(t)})
+    ref = mot_text(t, {"knee_angle_r": knee(t) + 2.0, "hip_flexion_r": 0.5 * knee(t) - 1.0})
+    r = c.post("/api/validation/series", data={"session": sid, "trial": "walk1", "activity": "walking", "align_on": "knee_angle_r"},
+               files={"reference": ("mocap.mot", ref.encode(), "text/plain")})
+    assert r.status_code == 200, r.text
+    v = r.json()
+    assert v["result"]["columns"]["knee_angle_r"]["bias"] == pytest.approx(-2.0, abs=0.02)
+    assert v["result"]["columns"]["hip_flexion_r"]["mae"] == pytest.approx(1.0, abs=0.02)
+    assert c.get("/api/validation").json()[0]["id"] == v["id"]
+    summ = c.get("/api/validation/summary").json()
+    assert summ["activities"]["walking"]["opencap_benchmark_mae"] == 4.1
+
+    # 고니오미터 기록지: 시계열에서 최대값 추출 vs 직접 입력한 test_value
+    kmax = float(knee(t).max())
+    sheet = "subject,session,trial,coordinate,mode,t_start,t_end,reference_deg,test_value\n"
+    sheet += f"P01,{sid},walk1,knee_angle_r,max,0,6,{kmax + 1:.3f},\n"
+    for i, (tv, rv) in enumerate([(40, 42), (55, 54), (70, 73), (90, 88)]):
+        sheet += f"P0{i + 2},,,knee_angle_r,max,,,{rv},{tv}\n"
+    r = c.post("/api/validation/discrete", files={"sheet": ("g.csv", sheet.encode(), "text/csv")})
+    assert r.status_code == 200, r.text
+    g = r.json()["result"]["groups"]["knee_angle_r|max"]
+    assert g["n"] == 5 and g["points"][0]["test"] == pytest.approx(kmax, abs=0.01)
+    assert g["icc"]["icc2_1"]["value"] > 0.9
+
+    # 잘못된 입력은 400, 없는 결과는 404, 삭제 가능
+    bad = c.post("/api/validation/series", data={"session": sid, "trial": "walk1"},
+                 files={"reference": ("x.csv", b"time,other\n0,1\n1,2\n", "text/csv")})
+    assert bad.status_code == 400
+    assert c.get("/api/validation/../../etc").status_code == 404
+    assert c.delete(f"/api/validation/{v['id']}").json() == {"ok": True}
+    assert c.get(f"/api/validation/{v['id']}").status_code == 404
+
+
+def test_requeue_orphans(tmp_path):
+    import store as st
+    root = tmp_path / "d"
+    s = st.Store(root)
+    a = s.enqueue("core", session="S", trial="t")
+    b = s.enqueue("kinetics", session="S", trial="t")
+    ja = st.claim_job(root, {"core"})
+    jb = st.claim_job(root, {"kinetics"})
+    assert ja["id"] == a["id"] and jb["id"] == b["id"]
+    # core 워커만 재시작 → core 작업만 대기열로 돌아가고 kinetics 작업(다른 워커가 처리 중)은 그대로
+    assert st.requeue_orphans(root, {"core", "intrinsics"}) == [a["id"]]
+    assert (root / "jobs" / "running" / f"{b['id']}.json").exists()
+    again = st.claim_job(root, {"core"})
+    assert again["id"] == a["id"] and again["requeued"] == 1
+    assert json.loads((root / "jobs" / "running" / f"{a['id']}.json").read_text())["state"] == "running"

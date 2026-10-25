@@ -21,7 +21,7 @@ sys.path.insert(0, str(PROC_DIR / "ActivityAnalyses"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import layout as L  # noqa: E402
-from store import claim_job, finish_job, update_running  # noqa: E402
+from store import claim_job, finish_job, requeue_orphans, update_running  # noqa: E402
 
 # 결과 요약에 넣을 항목: (키, 라벨 키, 단위 설명)
 SERIES = [
@@ -204,6 +204,9 @@ def run_activity(job: dict) -> dict:
 
 def loop() -> None:
     print("PhysioCap kinetics worker ready", DATA, flush=True)
+    orphans = requeue_orphans(DATA, {"activity", "kinetics"})  # 컨테이너 재시작으로 중단된 작업을 다시 대기열로
+    if orphans:
+        print("requeued interrupted jobs", orphans, flush=True)
     while True:
         job = claim_job(DATA, {"activity", "kinetics"})
         if not job:

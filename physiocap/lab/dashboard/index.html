@@ -17,6 +17,7 @@
     <button data-tab="sessions" class="on">세션</button>
     <button data-tab="devices">폰 연결</button>
     <button data-tab="intrinsics">렌즈 보정</button>
+    <button data-tab="validation">정확도 검증</button>
   </nav>
 
   <!-- 폰 연결 -->
@@ -63,6 +64,56 @@
   </section>
 
   <!-- 세션 -->
+  <section id="tab-validation" class="tab">
+    <div class="card">
+      <h2>정확도 검증</h2>
+      <p class="muted">기준 장비(3D 모캡 IK·IMU·고니오미터·지면반력판) 결과와 PhysioCap 결과를 비교합니다. 절차와 판정 기준은 <code>physiocap/lab/VALIDATION.md</code>, 기록지 양식은 <a href="templates/goniometer_record.csv" download>고니오미터 기록지</a> · <a href="templates/reference_series.csv" download>시계열 양식</a>.</p>
+      <div class="split">
+        <form id="valSeriesForm">
+          <h3>① 시계열 비교 (모캡·IMU·지면반력판)</h3>
+          <div class="grid3">
+            <label>PhysioCap 쪽<select name="testFrom" id="valTestFrom"><option value="lab">랩 시행 결과</option><option value="file">파일(모바일 CSV 등)</option></select></label>
+            <label id="valTrialLbl">시행<select id="valTrial"></select></label>
+            <label id="valFileLbl" hidden>PhysioCap 파일<input type="file" name="test_file" accept=".csv,.mot,.sto"></label>
+            <label>비교 대상<select name="source"><option value="kinematics">관절각</option><option value="grf">지면반력(%체중)</option></select></label>
+            <label>동작<select name="activity"><option value="walking">보행</option><option value="squats">스쿼트</option><option value="sit_to_stand">앉았다 일어서기</option><option value="drop_jump">드롭 점프</option><option value="other">기타</option></select></label>
+            <label>기준 장비 파일<input type="file" name="reference" accept=".csv,.mot,.sto" required></label>
+            <label>시간 맞춤 기준 열<input name="align_on" placeholder="예: knee_angle_r (비우면 맞춤 안 함)"></label>
+            <label>분석 구간(초)<input name="window" placeholder="예: 1.0,6.5"></label>
+            <label>비교 열(쉼표)<input name="columns" placeholder="비우면 공통 열 전체"></label>
+            <label>메모<input name="label" placeholder="대상자·조건"></label>
+            <label class="inline"><input type="checkbox" name="remove_offset" value="true"> 영점 차이 제거</label>
+          </div>
+          <button class="primary">비교 실행</button>
+        </form>
+        <form id="valDiscreteForm">
+          <h3>② 이산값 비교 (고니오미터 기록지)</h3>
+          <div class="grid3">
+            <label>기록지 CSV<input type="file" name="sheet" accept=".csv" required></label>
+            <label>동작<select name="activity"><option value="other">ROM/기타</option><option value="squats">스쿼트</option><option value="sit_to_stand">앉았다 일어서기</option><option value="walking">보행</option></select></label>
+            <label>메모<input name="label"></label>
+          </div>
+          <button class="primary">비교 실행</button>
+        </form>
+      </div>
+      <p id="valErr" class="err"></p>
+    </div>
+    <div class="card">
+      <h2>누적 요약 (OpenCap 논문 값과 비교)</h2>
+      <div id="valSummary" class="muted">아직 결과가 없습니다.</div>
+    </div>
+    <div class="split">
+      <div class="card"><h2>검증 기록</h2><ul id="valList" class="list"></ul></div>
+      <div class="card" id="valDetail" hidden>
+        <h2 id="valTitle"></h2>
+        <p id="valMeta" class="muted"></p>
+        <table id="valTable" class="tbl"></table>
+        <h3>Bland–Altman 그림 <span id="valBaName"></span></h3>
+        <canvas id="valBa" class="chart"></canvas>
+        <p class="muted">가로: 두 방법의 평균, 세로: 차이(PhysioCap − 기준). 실선 = 편향, 점선 = 95% 일치한계.</p>
+      </div>
+    </div>
+  </section>
   <section id="tab-sessions" class="tab on">
     <div class="split">
       <div class="card">
@@ -153,5 +204,6 @@
 <script type="module" src="viewer.js"></script>
 <script src="vendor/qrcode.js"></script>
 <script src="app.js"></script>
+<script src="validation.js"></script>
 </body>
 </html>

@@ -20,7 +20,7 @@ sys.path.insert(0, str(OPENCAP_DIR))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import layout as L  # noqa: E402
-from store import claim_job, finish_job, update_running  # noqa: E402
+from store import claim_job, finish_job, requeue_orphans, update_running  # noqa: E402
 
 DEFAULT_SETTINGS = json.loads((OPENCAP_DIR / "defaultOpenCapSettings.json").read_text()) if (OPENCAP_DIR / "defaultOpenCapSettings.json").exists() else {"openpose": "1x736", "hrnet": 0.8}
 
@@ -131,6 +131,9 @@ def short_error(e: BaseException) -> str:
 def loop() -> None:
     link_intrinsics()
     print("PhysioCap core worker ready", DATA, flush=True)
+    orphans = requeue_orphans(DATA, {"core", "intrinsics"})  # 컨테이너 재시작으로 중단된 작업을 다시 대기열로
+    if orphans:
+        print("requeued interrupted jobs", orphans, flush=True)
     while True:
         job = claim_job(DATA, {"core", "intrinsics"})
         if not job:
