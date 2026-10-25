@@ -2,6 +2,10 @@
 
 iPhone 전용인 OpenCap을 대신해 Android 폰에서 쓸 수 있도록 만든 온디바이스 동작분석 앱입니다. 카메라로 사람을 찍으면 MediaPipe Pose Landmarker가 매 프레임 신체 기준점 33개(2D 위치와 3D 추정 좌표)를 계산하고, 관절각, 반복 분할, 보행·균형 지표를 바로 보여 줍니다. 영상은 서버로 전송되지 않습니다.
 
+## PC에서 바로 열기 (Windows)
+
+`physiocap\open_physiocap.bat`을 더블클릭하면 이 PC에서 작은 웹 서버가 켜지고 브라우저에 앱이 열립니다(설치 필요 없음). 사용하는 동안 검은 창을 닫지 마세요. `web\index.html`을 직접 더블클릭하면 브라우저 보안 규칙 때문에 앱이 동작하지 않습니다. 저장소 맨 위의 `index.html`은 PhysioCap이 아니라 원래 있던 메타버스 교육 게임입니다.
+
 ## OpenCap과의 비교
 
 | 항목 | OpenCap (Stanford) | PhysioCap |
