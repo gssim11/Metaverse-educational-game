@@ -11,11 +11,11 @@ param(
     [switch]$Install,
     [switch]$Uninstall,
     [string]$Branch = "ccr-8373bb47-hg1mx9",
-    [int]$EveryMinutes = 30
+    [int]$EveryMinutes = 30,
+    [string]$RepoUrl = "https://github.com/gssim11/Metaverse-educational-game.git"
 )
 
 $ErrorActionPreference = "Stop"
-$RepoUrl  = "https://github.com/gssim11/Metaverse-educational-game.git"
 $CoworkDir = Join-Path $env:USERPROFILE "Documents\Cowork"
 $Dest     = Join-Path $CoworkDir "PhysioCap"
 $LogFile  = Join-Path $CoworkDir "PhysioCap_sync.log"
@@ -67,22 +67,39 @@ function Sync-Repo {
     }
     Push-Location $Dest
     try {
-        $null = Invoke-Git fetch origin
-        $remote = git ls-remote --heads origin $Branch
-        if (-not $remote) {
-            # The work branch is gone (for example after the pull request was merged): follow the default branch.
-            $default = (git remote show origin | Select-String "HEAD branch").ToString().Split(":")[1].Trim()
-            Log "Branch $Branch no longer exists on GitHub; switching to $default."
-            $null = Invoke-Git checkout $default
-        }
-        $before = git rev-parse HEAD
-        $code = Invoke-Git pull --ff-only
-        if ($code -ne 0) {
-            Log "Pull stopped: files in $Dest were changed locally. Local edits are kept; copy them elsewhere and run 'git checkout .' in that folder to resume syncing."
+        if ((Invoke-Git fetch --prune origin) -ne 0) {
+            Log "Could not reach GitHub (offline?). Will try again next time."
             return
         }
+        $current = (git rev-parse --abbrev-ref HEAD).Trim()
+        $remote = git ls-remote --heads origin $current
+        if (-not $remote) {
+            # The branch is gone (for example after the pull request was merged): follow the default branch.
+            # Read it from the ref itself; 'git remote show' prints translated text on non-English systems.
+            $headRef = git ls-remote --symref origin HEAD | Where-Object { $_ -like "ref:*" } | Select-Object -First 1
+            if (-not $headRef) { Log "Branch $current is gone and the default branch is unknown; nothing pulled."; return }
+            $default = ($headRef -split "\s+")[1] -replace "^refs/heads/", ""
+            Log "Branch $current no longer exists on GitHub; switching to $default."
+            if ((Invoke-Git checkout $default) -ne 0) { Log "Could not switch to $default (local edits?)."; return }
+        }
+        $dirty = git status --porcelain --untracked-files=no
+        if ($dirty) {
+            Log "Not updated: these files were changed on this PC and are kept as they are:"
+            $dirty | ForEach-Object { Log "   $_" }
+            Log "To resume syncing, copy your edits elsewhere and run 'git checkout .' in $Dest."
+            return
+        }
+        $before = git rev-parse HEAD
+        if ((Invoke-Git pull --ff-only) -ne 0) { Log "Pull failed; see the lines above."; return }
         $after = git rev-parse HEAD
-        if ($before -ne $after) { Log "Updated $($before.Substring(0,7)) -> $($after.Substring(0,7))" } else { Log "Already up to date." }
+        if ($before -ne $after) { Log "Updated $($before.Substring(0,7)) -> $($after.Substring(0,7))" } else { Log "Already up to date ($($after.Substring(0,7)))." }
+        # Keep the scheduled copy of this script current, so fixes pushed to GitHub reach this PC (used from the next run).
+        $fresh = Join-Path $Dest "physiocap\scripts\sync_to_cowork.ps1"
+        if ((Test-Path $fresh) -and (Test-Path $SelfCopy) -and
+            ((Get-FileHash $fresh).Hash -ne (Get-FileHash $SelfCopy).Hash)) {
+            Copy-Item -Path $fresh -Destination $SelfCopy -Force
+            Log "Sync script updated from GitHub."
+        }
     } finally { Pop-Location }
 }
 
