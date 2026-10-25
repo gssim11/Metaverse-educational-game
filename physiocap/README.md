@@ -8,7 +8,7 @@ iPhone 전용인 OpenCap을 대신해 Android 폰에서 쓸 수 있도록 만든
 |---|---|---|
 | 기기 | iPhone/iPad 2대 이상 + 체커보드 보정. 단안 베타(OpenCap Monocular)도 iPhone 전용 | Android 폰 1대, 보정 없음 |
 | 처리 위치 | 클라우드 서버 (결과까지 수 분) | 폰 내부, 실시간 |
-| 인터넷 | 필요 | 필요 없음 (APK에 모델 포함) |
+| 인터넷 | 필요 | 필요 없음 (APK·웹 모두 엔진과 모델을 저장소에 포함) |
 | 결과 | OpenSim 역기구학 관절각, 근골격 시뮬레이션 기반 관절 모멘트·근력·지면반력 | 관절각, 반복·이벤트 분할, 보행·균형·STS 지표, 대칭지수, 이전 기록 대비 변화 |
 | 정확도 | 마커 기반 모캡 대비 관절각 MAE 4.5°[^1], 단안 버전 회전 자유도 MAE 4.8°[^2] | 따로 검증하지 않음. 카메라 쪽(깊이 방향) 움직임과 회전 정확도가 낮음 |
 | 연구용 내보내기 | OpenSim 모델·모션 파일 | OpenSim TRC(마커 궤적), 각도 CSV, 좌표 CSV, JSON |
@@ -36,7 +36,7 @@ iPhone 전용인 OpenCap을 대신해 Android 폰에서 쓸 수 있도록 만든
 2. 폰에서 APK를 열고 "출처를 알 수 없는 앱 설치"를 허용해 설치합니다.
 3. 첫 실행 때 카메라 권한을 허용합니다.
 
-APK 없이 쓰려면 `web/` 폴더를 HTTPS로 호스팅(예: GitHub Pages)한 뒤 갤럭시 Chrome에서 열고 "홈 화면에 추가"를 누르면 PWA로 설치됩니다.
+APK 없이 쓰려면 `web/` 폴더를 HTTPS로 호스팅(Vercel, GitHub Pages 등)한 뒤 갤럭시 Chrome에서 열고 "홈 화면에 추가"를 누르면 PWA로 설치됩니다. 첫 접속 때 엔진과 모델(약 29MB)을 기기에 캐시하며, "오프라인 사용 준비 완료" 안내가 뜬 뒤에는 인터넷 없이 동작합니다. Heavy 모델은 저장소에 없어 처음 선택할 때만 인터넷이 필요합니다.
 
 ## 촬영 요령
 
@@ -50,7 +50,7 @@ APK 없이 쓰려면 `web/` 폴더를 HTTPS로 호스팅(예: GitHub Pages)한 �
 ```bash
 cd physiocap
 npm test                      # 분석 엔진 단위 테스트 (합성 골격 데이터)
-bash scripts/fetch-assets.sh  # MediaPipe WASM + lite/full 모델을 web/vendor 로 (INCLUDE_HEAVY=1 이면 heavy 포함)
+bash scripts/fetch-assets.sh  # web/vendor 갱신용 (저장소에 이미 포함됨). MP_VERSION=… 으로 버전 변경, INCLUDE_HEAVY=1 이면 heavy 포함
 node scripts/serve.mjs 8080   # http://localhost:8080
 cd android && ./gradlew assembleDebug   # Android SDK 필요
 ```

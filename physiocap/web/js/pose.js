@@ -4,6 +4,19 @@ const CDN_VER = '1.1.1';
 const CDN = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${CDN_VER}`;
 const MODEL_REMOTE = (m) => `https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_${m}/float16/latest/pose_landmarker_${m}.task`;
 
+// MediaPipe 웹 런타임은 성능 통계(작업 종류·지연시간)를 Google 로깅 서버로 보낸다. 끌 수 있는 옵션이 없어
+// 해당 주소로 가는 fetch 만 네트워크에 나가지 않게 막는다. (응답이 200이 아니면 로거가 스스로 멈춘다)
+const TELEMETRY_HOST = 'odml.pa.googleapis.com';
+if (!globalThis.__physiocapNoTelemetry) {
+  globalThis.__physiocapNoTelemetry = true;
+  const realFetch = globalThis.fetch.bind(globalThis);
+  globalThis.fetch = (input, init) => {
+    const url = typeof input === 'string' ? input : input?.url || String(input);
+    if (url.includes(TELEMETRY_HOST)) return Promise.resolve(new Response(null, { status: 204 }));
+    return realFetch(input, init);
+  };
+}
+
 let vision = null;
 let wasmBase = null;
 

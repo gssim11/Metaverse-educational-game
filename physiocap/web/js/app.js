@@ -698,8 +698,18 @@ window.physiocapBack = () => {
   return false;
 };
 
-if ('serviceWorker' in navigator && !isAndroidApp && location.protocol === 'https:') {
-  navigator.serviceWorker.register('sw.js').catch(() => {});
+if ('serviceWorker' in navigator && !isAndroidApp && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+  const first = !navigator.serviceWorker.controller;
+  navigator.serviceWorker.register('sw.js').then((reg) => {
+    if (!first) return;
+    const w = reg.installing || reg.waiting;
+    if (!w) return;
+    toast('오프라인용 엔진·모델(약 29MB) 받는 중…', 4000);
+    w.addEventListener('statechange', () => {
+      if (w.state === 'activated') toast('오프라인 사용 준비 완료 — 이제 인터넷 없이도 동작합니다.', 4000);
+      if (w.state === 'redundant') toast('오프라인 준비에 실패했습니다. 다음 접속 때 다시 시도합니다.', 4000);
+    });
+  }).catch(() => {});
 }
 
 renderHome();
