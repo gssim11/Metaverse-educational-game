@@ -1,0 +1,49 @@
+name: PhysioCap Android APK
+
+on:
+  push:
+    paths:
+      - 'physiocap/**'
+      - '.github/workflows/physiocap-android.yml'
+  pull_request:
+    paths:
+      - 'physiocap/**'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: physiocap
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: 분석 엔진 단위 테스트
+        run: npm test
+
+      - name: MediaPipe 런타임·모델 받기 (오프라인 번들)
+        run: bash scripts/fetch-assets.sh
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: APK 빌드 (debug 서명 — 바로 설치 가능)
+        working-directory: physiocap/android
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleDebug
+          cp app/build/outputs/apk/debug/app-debug.apk ../PhysioCap-debug.apk
+          ls -la ../PhysioCap-debug.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PhysioCap-apk
+          path: physiocap/PhysioCap-debug.apk
+          if-no-files-found: error
