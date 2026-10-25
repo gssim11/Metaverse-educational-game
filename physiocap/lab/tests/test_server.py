@@ -157,3 +157,40 @@ def test_file_access_is_sandboxed(env):
     _, c, _ = env
     assert c.get("/files/../devices.json").status_code == 404
     assert c.get("/files/devices.json").status_code == 404
+
+
+def test_analysis_resolution():
+    import app
+    assert app.resolve_analysis("auto", "walking") == "gait"
+    assert app.resolve_analysis("auto", "sit_to_stand") == "sts"
+    assert app.resolve_analysis("auto", "squats") == "none"
+    assert app.resolve_analysis("sts", "none") == "sts"
+
+
+def test_activity_enqueued_before_kinetics(env, tmp_path):
+    appmod, c, _ = env
+    register(c, "a"); register(c, "b")
+    model = appmod.L.camera_model_key("SM-S921N", 720, 1280, 60)
+    d = appmod.DATA / "intrinsics" / model / "Deployed"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "cameraIntrinsics.pickle").write_bytes(b"x")
+    s = c.post("/api/sessions", json={"subject": {"height_m": 1.7, "mass_kg": 65}, "cameras": {"Cam0": "a", "Cam1": "b"}}).json()
+    v = make_video(tmp_path / "v.mp4")
+    for body in ({"type": "calibration"}, {"type": "neutral"}, {"type": "dynamic", "name": "walk1", "motion_type": "walking", "time_window": [1, 2]}):
+        t = c.post(f"/api/sessions/{s['id']}/trials", json=body).json()
+        c.post(f"/api/sessions/{s['id']}/trials/{t['id']}/stop")
+        for did, cam in (("a", "Cam0"), ("b", "Cam1")):
+            upload(c, did, v, session=s["id"], trial=t["id"], cam=cam, start_device_ms=0, fps=60)
+        run_fake_worker(appmod, {"core"})
+    walk = next(t for t in c.get(f"/api/sessions/{s['id']}").json()["trials"] if t["id"] == "walk1")
+    assert walk["analysis"] == "gait" and walk["activity_state"] == "queued" and walk["kinetics_state"] == "queued"
+    import store as st
+    first = st.claim_job(appmod.DATA, {"activity", "kinetics"})
+    assert first["kind"] == "activity" and first["analysis"] == "gait"  # 짧은 지표 분석이 먼저
+    st.finish_job(appmod.DATA, first, ok=True, outputs={})
+    appmod.sync_jobs()
+    walk = next(t for t in c.get(f"/api/sessions/{s['id']}").json()["trials"] if t["id"] == "walk1")
+    assert walk["activity_state"] == "done"
+    # 수동 실행: 운동학 없으면 거부
+    assert c.post(f"/api/sessions/{s['id']}/trials/walk1/activity", json={"analysis": "sts"}).status_code == 409
+    assert c.post(f"/api/sessions/{s['id']}/trials/walk1/activity", json={"analysis": "bad"}).status_code == 400

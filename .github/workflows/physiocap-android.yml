@@ -33,7 +33,7 @@ jobs:
       - name: 연구실 서버·워커 테스트
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
-          pip install -q -r lab/server/requirements.txt pytest httpx numpy
+          pip install -q -r lab/server/requirements.txt pytest httpx numpy pandas
           python -m pytest -q lab/tests
 
       - name: MediaPipe 런타임·모델 받기 (오프라인 번들)

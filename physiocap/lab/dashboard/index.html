@@ -95,6 +95,7 @@
             <div class="grid3">
               <label>시행 이름 <input id="tName" placeholder="squat1"></label>
               <label>동역학 동작 <select id="tMotion"></select></label>
+              <label>지표 분석 <select id="tAnalysis"><option value="auto">자동 (보행·STS 동작이면)</option><option value="gait">보행 지표</option><option value="sts">앉았다 일어서기 지표</option><option value="none">안 함</option></select></label>
               <label>반복 번호(스쿼트·STS, 0부터) <input id="tRep" type="number" value="0"></label>
               <label>구간 시작(s) <input id="tT0" type="number" step="0.01" placeholder="보행·점프"></label>
               <label>구간 끝(s) <input id="tT1" type="number" step="0.01" placeholder="2초 이하 권장"></label>
@@ -124,6 +125,15 @@
         </div>
         <p id="v3Info" class="muted"></p>
       </div>
+      <div id="actBox" hidden>
+        <h3 id="actTitle">동작 지표</h3>
+        <div id="actTable"></div>
+        <div id="actCurveBox">
+          <div class="row"><label class="inline">관절 <select id="actCoord"></select></label><span class="muted">보행 주기 정규화(0–100%) 평균 ± 표준편차 · 분홍=오른쪽, 하늘=왼쪽</span></div>
+          <canvas id="actChart" class="chart"></canvas>
+        </div>
+      </div>
+      <div class="row" id="actRun"><select id="actKind"><option value="gait">보행 지표</option><option value="sts">앉았다 일어서기 지표</option></select><button id="actRunBtn">지표 분석 실행</button></div>
       <h3>관절각 (OpenSim 역기구학)</h3>
       <div id="kinChips" class="chips"></div>
       <canvas id="kinChart" class="chart"></canvas>

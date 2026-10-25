@@ -119,3 +119,83 @@ def test_kinetics_summary_and_call(tmp_path, monkeypatch):
     assert summ["series"]["GRF_BW"]["data"]["GRF_y_r"] == [50.0] * 5
     assert len(summ["series"]["muscle_activations"]["data"]["a"]) == 4
     assert "검증하지 않았다" in summ["note"]
+
+
+def _kin_worker(tmp_path, monkeypatch, modules):
+    data = tmp_path / "data"
+    monkeypatch.setenv("PHYSIOCAP_DATA", str(data))
+    monkeypatch.setenv("OPENCAP_PROCESSING_DIR", str(tmp_path / "proc"))
+    for name, mod in modules.items():
+        monkeypatch.setitem(sys.modules, name, mod)
+    sys.path.insert(0, str(ROOT / "worker_kinetics"))
+    import physiocap_kinetics_worker as k
+    k = importlib.reload(k)
+    pa = data / "Data" / "S1" / "MarkerData" / "PostAugmentation"
+    pa.mkdir(parents=True)
+    (pa / "t1.trc").write_text("trc")
+    (pa / "Settings_t1.yaml").write_text("poseDetector: hrnet\n")
+    return k, data
+
+
+def test_activity_gait_layout_and_summary(tmp_path, monkeypatch):
+    import pandas as pd
+    seen = {}
+
+    class FakeGait:
+        def __init__(self, sd, trial, leg, lowpass_cutoff_frequency_for_coordinate_values, n_gait_cycles):
+            seen[leg] = (sd, trial)
+            # OpenCap 다운로드 구조로 미러링됐는지
+            assert (Path(sd) / "MarkerData" / "t1.trc").read_text() == "trc"
+            assert (Path(sd) / "MarkerData" / "Settings" / "settings_t1.yaml").exists()
+            if leg == "l":
+                raise RuntimeError("not enough gait cycles")
+            self.nGaitCycles = 3
+            self.gaitEvents = {"eventNamesIpsilateral": ["HS", "TO", "HS"], "ipsilateralTime": np.array([[1.0, 1.6, 2.1]])}
+
+        def compute_scalars(self, names, return_all=False):
+            n = names[0]
+            if n == "step_width":
+                raise ValueError("boom")
+            val = {"r": 0.6, "l": 0.5} if n == "step_length" else (np.array([1.0, 1.2]) if return_all else np.float64(1.1))
+            return {n: {"value": val, "units": "m"}}
+
+        def get_coordinates_normalized_time(self):
+            df = pd.DataFrame({"time": np.linspace(0, 1, 101), "knee_angle_r": np.linspace(0, 60, 101)})
+            return {"mean": df, "sd": df * 0.1}
+
+    k, data = _kin_worker(tmp_path, monkeypatch, {"gait_analysis": types.SimpleNamespace(gait_analysis=FakeGait)})
+    out = k.run_activity({"id": "a", "session": "S1", "trial": "t1", "analysis": "gait"})
+    d = json.loads((data / out["file"]).read_text())
+    r = d["legs"]["r"]
+    assert r["n_cycles"] == 3 and r["events"]["times"] == [1.0, 1.6, 2.1]
+    assert r["scalars"]["gait_speed"]["value"] == 1.1 and r["scalars"]["gait_speed"]["per_cycle"] == [1.0, 1.2]
+    assert r["scalars"]["step_length"]["value"] == {"r": 0.6, "l": 0.5}
+    assert "boom" in r["scalars"]["step_width"]["error"]  # 한 지표 실패가 전체를 막지 않음
+    assert r["curves"]["mean"]["knee_angle_r"][-1] == 60.0 and "time" not in r["curves"]["mean"]
+    assert "gait cycles" in d["legs"]["l"]["error"]
+
+
+def test_activity_sts(tmp_path, monkeypatch):
+    import pandas as pd
+
+    class FakeSTS:
+        def __init__(self, sd, trial, n_sts_cycles, lowpass_cutoff_frequency_for_coordinate_values):
+            self.coordinateValues = pd.DataFrame({"time": np.arange(0, 5, 0.5)})
+            self.stsEvents = {"startRisingIdx": [2, 6], "endRisingIdx": [3, 7], "sittingIdx": [5, 9], "forwardLeanIdx": [1, 5]}
+            self.n_sts_cycles = 2
+
+        def compute_scalars(self, names, return_all=False):
+            return {names[0]: {"value": np.array([0.8, 0.9]) if return_all else 0.85, "units": "s"}}
+
+    k, data = _kin_worker(tmp_path, monkeypatch, {"sts_analysis": types.SimpleNamespace(sts_analysis=FakeSTS)})
+    out = k.run_activity({"id": "a", "session": "S1", "trial": "t1", "analysis": "sts"})
+    d = json.loads((data / out["file"]).read_text())
+    assert d["n_cycles"] == 2 and d["events"]["startRisingIdx"] == [1.0, 3.0]
+    assert d["scalars"]["rise_time"] == {"value": 0.85, "units": "s", "per_cycle": [0.8, 0.9]}
+    assert set(d["scalars"]) == set(k.STS_SCALARS)
+
+
+def test_activity_requires_augmented_trc(tmp_path, monkeypatch):
+    k, data = _kin_worker(tmp_path, monkeypatch, {})
+    with pytest.raises(RuntimeError, match="마커"):
+        k.run_activity({"id": "a", "session": "S1", "trial": "nope", "analysis": "gait"})

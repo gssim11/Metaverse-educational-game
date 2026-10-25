@@ -87,8 +87,9 @@ function renderSession() {
   $('#recInfo').textContent = rec ? `● ${rec.id} 녹화 중` : '';
   document.querySelectorAll('[data-trial]').forEach((b) => (b.disabled = !!rec || s.trials.some((t) => t.state === 'uploading')));
   $('#trialTable').innerHTML = '<tr><th>시행</th><th>종류</th><th>상태</th><th>동역학</th><th></th></tr>' + s.trials.map((t) => {
-    const kin = t.motion_type && t.motion_type !== 'none' ? `${esc(state.kinetic[t.motion_type]?.label || t.motion_type)}: <span class="state ${t.kinetics_state || ''}">${STATE_KO[t.kinetics_state] || t.kinetics_state || '-'}</span>` : '-';
-    const err = t.error ? `<div class="err">${esc(t.error)}</div>` : t.kinetics_error ? `<div class="err">동역학: ${esc(t.kinetics_error)}</div>` : '';
+    const kin = (t.motion_type && t.motion_type !== 'none' ? `${esc(state.kinetic[t.motion_type]?.label || t.motion_type)}: <span class="state ${t.kinetics_state || ''}">${STATE_KO[t.kinetics_state] || t.kinetics_state || '-'}</span>` : '-')
+      + (t.analysis && t.analysis !== 'none' ? `<br>${t.analysis === 'gait' ? '보행 지표' : 'STS 지표'}: <span class="state ${t.activity_state || ''}">${STATE_KO[t.activity_state] || t.activity_state || '대기'}</span>` : '');
+    const err = t.error ? `<div class="err">${esc(t.error)}</div>` : (t.kinetics_error ? `<div class="err">동역학: ${esc(t.kinetics_error)}</div>` : '') + (t.activity_error ? `<div class="err">지표: ${esc(t.activity_error)}</div>` : '');
     return `<tr><td><b>${esc(t.id)}</b>${t.stale ? ' <span class="muted">(재보정 후 다시 처리 필요)</span>' : ''}${err}</td><td>${{ calibration: '보정', neutral: '중립', dynamic: '동작' }[t.type]}</td>
       <td class="state ${t.state}">${STATE_KO[t.state] || t.state}${t.stage ? ' · ' + esc(t.stage) : ''}</td><td>${kin}</td>
       <td>${t.state === 'done' || t.kinetics_state ? `<button data-res="${esc(t.id)}">결과</button>` : ''} ${['error', 'done'].includes(t.state) ? `<button data-re="${esc(t.id)}">재처리</button>` : ''}</td></tr>`;
@@ -120,6 +121,7 @@ document.querySelectorAll('[data-trial]').forEach((b) => b.onclick = async () =>
   if (type === 'dynamic') {
     body.name = $('#tName').value.trim();
     body.motion_type = $('#tMotion').value;
+    body.analysis = $('#tAnalysis').value;
     const need = state.kinetic[body.motion_type]?.needs;
     if (need === 'repetition') body.repetition = +$('#tRep').value;
     if (need === 'time_window' && $('#tT0').value && $('#tT1').value) body.time_window = [+$('#tT0').value, +$('#tT1').value];
@@ -155,6 +157,10 @@ async function openResult(tid) {
   $('#rvNotes').innerHTML = notes.map((n) => `<div class="note">${esc(n)}</div>`).join('');
   // 3D 재생
   await show3D(s.id, tid, r);
+  // 동작 지표 (OpenCap ActivityAnalyses)
+  const evMarks = showActivity(r.activity);
+  $('#actRun').hidden = r.trial.type !== 'dynamic' || !r.kinematics;
+  $('#actRunBtn').onclick = () => api(`/api/sessions/${s.id}/trials/${tid}/activity`, { method: 'POST', body: { analysis: $('#actKind').value } }).then(() => toast('지표 분석을 대기열에 넣었습니다. 잠시 후 결과를 다시 여세요.')).catch((e) => toast(e.message));
   // 관절각
   if (r.kinematics) {
     const cols = r.kinematics.columns, data = r.kinematics.data;
@@ -162,7 +168,7 @@ async function openResult(tid) {
     const series = {};
     cols.slice(1).forEach((c, i) => (series[c] = data.map((row) => row[i + 1])));
     const def = ['hip_flexion_r', 'hip_flexion_l', 'knee_angle_r', 'knee_angle_l', 'ankle_angle_r', 'ankle_angle_l'].filter((c) => c in series);
-    chipChart('#kinChips', '#kinChart', t, series, def.length ? def : Object.keys(series).slice(0, 4), '°');
+    chipChart('#kinChips', '#kinChart', t, series, def.length ? def : Object.keys(series).slice(0, 4), '°', evMarks);
   }
   // 동역학
   $('#kinBox').hidden = !r.kinetics;
@@ -225,12 +231,66 @@ async function show3D(sid, tid, r) {
   $('#v3Info').textContent = (info.meshCount ? `뼈 메시 ${info.meshCount}개` : '뼈 메시를 찾지 못해 선 골격으로 표시') + (info.missing ? ` (누락 ${info.missing})` : '') + ` · ${vis.time.length} 프레임` + forces;
 }
 
-function chipChart(chipSel, canvasSel, t, series, active, unit) {
+// ---------- 동작 지표 ----------
+const SCALAR_KO = {
+  gait_speed: '보행 속도', stride_length: '활보장(한 주기 거리)', step_length: '보장(한 걸음)', step_length_symmetry: '보장 대칭(R/L)',
+  step_width: '보폭 너비', cadence: '분속수', stance_time: '입각기 시간', swing_time: '유각기 시간',
+  single_support_time: '단하지 지지', double_support_time: '양하지 지지', midswing_dorsiflexion_angle: '유각 중기 배측굴곡', midswing_ankle_heigh_dif: '유각 중기 발목 높이 차',
+  rise_time: '일어서기 시간', sts_time: '1회 앉았다 일어서기 시간', torso_orientation: '이륙 전 최대 체간 기울기', torso_angular_velocity: '이륙 전 최대 체간 각속도',
+  torso_orientation_liftoff: '이륙 시 체간 기울기', torso_angular_velocity_liftoff: '이륙 시 체간 각속도',
+};
+const fmtVal = (v) => (v == null ? '–' : typeof v === 'object' ? Object.entries(v).map(([k, x]) => `${k.toUpperCase()} ${fmtVal(x)}`).join(' / ') : Math.abs(v) >= 100 ? v.toFixed(0) : v.toFixed(Math.abs(v) >= 10 ? 1 : 2));
+
+function showActivity(a) {
+  $('#actBox').hidden = !a;
+  if (!a) return [];
+  const marks = [];
+  if (a.analysis === 'gait') {
+    $('#actTitle').textContent = '보행 지표 (OpenCap gait_analysis, 오른발·왼발 기준 주기)';
+    const legs = a.legs || {};
+    const names = Object.keys(legs.r?.scalars || legs.l?.scalars || {});
+    const cell = (leg, n) => { const x = legs[leg]; if (!x || x.error) return '<span class="muted">–</span>'; const v = x.scalars[n]; return v.error ? `<span class="err">${esc(v.error)}</span>` : `${fmtVal(v.value)} <span class="muted">${esc(v.units)}</span>`; };
+    $('#actTable').innerHTML = `<table class="tbl"><tr><th>지표</th><th>오른발 주기</th><th>왼발 주기</th></tr>${names.map((n) => `<tr><td>${esc(SCALAR_KO[n] || n)}</td><td>${cell('r', n)}</td><td>${cell('l', n)}</td></tr>`).join('')}
+      <tr><td>분석한 보행 주기 수</td><td>${legs.r?.n_cycles ?? '–'}</td><td>${legs.l?.n_cycles ?? '–'}</td></tr></table>`
+      + Object.entries(legs).filter(([, v]) => v.error).map(([k, v]) => `<div class="err">${k === 'r' ? '오른발' : '왼발'}: ${esc(v.error)}</div>`).join('');
+    for (const [leg, v] of Object.entries(legs)) {
+      (v.events?.times || []).forEach((tt, i) => marks.push({ t: tt, label: (leg === 'r' ? 'R ' : 'L ') + (v.events.names[i % v.events.names.length] || ''), color: leg === 'r' ? '#f72585' : '#4cc9f0' }));
+    }
+    // 정규화 곡선
+    $('#actCurveBox').hidden = false;
+    const coords = Object.keys(legs.r?.curves?.mean || legs.l?.curves?.mean || {}).filter((c) => !/_t[xyz]$/.test(c));
+    const base = (c) => c.replace(/_[rl]$/, '');
+    const uniq = [...new Set(coords.map(base))];
+    $('#actCoord').innerHTML = uniq.map((c) => `<option ${c === 'knee_angle' ? 'selected' : ''}>${c}</option>`).join('');
+    const draw = () => {
+      const c = $('#actCoord').value;
+      const series = [];
+      for (const [leg, color] of [['r', '#f72585'], ['l', '#4cc9f0']]) {
+        const cv = legs[leg]?.curves; if (!cv) continue;
+        const key = cv.mean[c + '_' + leg] ? c + '_' + leg : cv.mean[c] ? c : null; if (!key) continue;
+        series.push({ y: cv.mean[key], sd: cv.sd?.[key], color });
+      }
+      drawChart($('#actChart'), Array.from({ length: 101 }, (_, i) => i), series, '°', [], '%');
+    };
+    $('#actCoord').onchange = draw;
+    draw();
+  } else {
+    $('#actTitle').textContent = `앉았다 일어서기 지표 (OpenCap sts_analysis, ${a.n_cycles}회)`;
+    const names = Object.keys(a.scalars || {});
+    $('#actTable').innerHTML = `<table class="tbl"><tr><th>지표</th><th>평균</th><th>회차별</th></tr>${names.map((n) => { const v = a.scalars[n]; return `<tr><td>${esc(SCALAR_KO[n] || n)}</td><td>${v.error ? `<span class="err">${esc(v.error)}</span>` : fmtVal(v.value) + ' <span class="muted">' + esc(v.units) + '</span>'}</td><td>${Array.isArray(v.per_cycle) ? v.per_cycle.map(fmtVal).join(', ') : ''}</td></tr>`; }).join('')}</table>`;
+    $('#actCurveBox').hidden = true;
+    const ev = a.events || {}, lab = { startRisingIdx: '일어서기 시작', endRisingIdx: '기립 완료', sittingIdx: '앉음', forwardLeanIdx: '앞으로 숙임' };
+    for (const [k, arr] of Object.entries(ev)) arr.forEach((tt) => marks.push({ t: tt, label: lab[k] || k, color: k === 'endRisingIdx' ? '#06d6a0' : '#ffd166' }));
+  }
+  return marks;
+}
+
+function chipChart(chipSel, canvasSel, t, series, active, unit, marks = []) {
   const on = new Set(active);
   const box = $(chipSel);
   const names = Object.keys(series);
   box.innerHTML = names.map((n, i) => `<span class="chip ${on.has(n) ? 'on' : ''}" style="color:${PALETTE[i % PALETTE.length]}" data-n="${esc(n)}">${esc(n)}</span>`).join('');
-  const draw = () => drawChart($(canvasSel), t, names.map((n, i) => ({ y: series[n], color: PALETTE[i % PALETTE.length], on: on.has(n) })).filter((s) => s.on), unit);
+  const draw = () => drawChart($(canvasSel), t, names.map((n, i) => ({ y: series[n], color: PALETTE[i % PALETTE.length], on: on.has(n) })).filter((s) => s.on), unit, marks);
   chartRedraws[canvasSel] = draw;
   $(canvasSel).onclick = (ev) => {
     if (!viewer || !t.length) return;
@@ -242,7 +302,7 @@ function chipChart(chipSel, canvasSel, t, series, active, unit) {
   draw();
 }
 
-function drawChart(c, t, series, unit) {
+function drawChart(c, t, series, unit, marks = [], xUnit = 's') {
   const dpr = devicePixelRatio || 1, W = c.clientWidth, H = c.clientHeight;
   c.width = W * dpr; c.height = H * dpr;
   const g = c.getContext('2d');
@@ -250,7 +310,7 @@ function drawChart(c, t, series, unit) {
   g.clearRect(0, 0, W, H);
   const L = 48, T = 10, w = W - L - 12, h = H - 34;
   let lo = Infinity, hi = -Infinity;
-  for (const s of series) for (const v of s.y) if (v != null && isFinite(v)) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
+  for (const s of series) s.y.forEach((v, i) => { if (v == null || !isFinite(v)) return; const d = s.sd?.[i] || 0; lo = Math.min(lo, v - d); hi = Math.max(hi, v + d); });
   if (!isFinite(lo)) { lo = 0; hi = 1; }
   const pad = (hi - lo) * 0.08 || 1; lo -= pad; hi += pad;
   const t0 = t[0] ?? 0, t1 = t[t.length - 1] ?? 1;
@@ -258,7 +318,23 @@ function drawChart(c, t, series, unit) {
   const css = getComputedStyle(document.documentElement);
   g.strokeStyle = css.getPropertyValue('--line'); g.fillStyle = css.getPropertyValue('--muted'); g.font = '11px system-ui';
   for (let i = 0; i <= 4; i++) { const v = lo + (i / 4) * (hi - lo); g.beginPath(); g.moveTo(L, Y(v)); g.lineTo(L + w, Y(v)); g.stroke(); g.fillText(v.toFixed(Math.abs(hi - lo) < 5 ? 2 : 0), 4, Y(v) + 4); }
-  for (let i = 0; i <= 5; i++) { const x = t0 + (i / 5) * (t1 - t0); g.fillText(x.toFixed(2) + 's', X(x) - 14, H - 8); }
+  for (let i = 0; i <= 5; i++) { const x = t0 + (i / 5) * (t1 - t0); g.fillText(xUnit === 's' ? x.toFixed(2) + 's' : x.toFixed(0) + xUnit, X(x) - 14, H - 8); }
+  // 이벤트 표시(보행 HS/TO, STS 단계)
+  g.save(); g.setLineDash([3, 3]);
+  for (const m of marks) {
+    if (m.t < t0 || m.t > t1) continue;
+    g.strokeStyle = m.color; g.lineWidth = 1; g.beginPath(); g.moveTo(X(m.t), T); g.lineTo(X(m.t), T + h); g.stroke();
+    g.fillStyle = m.color; g.fillText(m.label, X(m.t) + 3, T + 10);
+  }
+  g.restore();
+  // 표준편차 띠
+  for (const s of series) {
+    if (!s.sd) continue;
+    g.fillStyle = s.color + '33'; g.beginPath();
+    s.y.forEach((v, i) => (i ? g.lineTo(X(t[i]), Y(v + (s.sd[i] || 0))) : g.moveTo(X(t[i]), Y(v + (s.sd[i] || 0)))));
+    for (let i = s.y.length - 1; i >= 0; i--) g.lineTo(X(t[i]), Y(s.y[i] - (s.sd[i] || 0)));
+    g.closePath(); g.fill();
+  }
   g.fillText(unit || '', 4, 10);
   if (cursorT != null && cursorT >= t0 && cursorT <= t1) {
     g.strokeStyle = css.getPropertyValue('--text'); g.lineWidth = 1;

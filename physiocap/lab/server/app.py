@@ -69,6 +69,7 @@ class TrialStart(BaseModel):
     type: str = "dynamic"  # calibration | neutral | dynamic
     name: str = ""
     motion_type: str = L.NO_KINETICS
+    analysis: str = "auto"  # auto | gait | sts | none  (opencap-processing ActivityAnalyses)
     repetition: int | None = None
     time_window: list[float] | None = None
 
@@ -78,6 +79,20 @@ class KineticsRequest(BaseModel):
     repetition: int | None = None
     time_window: list[float] | None = None
     case: str = "0"
+
+
+class ActivityRequest(BaseModel):
+    analysis: str
+
+
+ANALYSES = ("gait", "sts")
+
+
+def resolve_analysis(analysis: str, motion_type: str) -> str:
+    """auto: 보행 동역학 → 보행 지표, 앉았다 일어서기 → STS 지표."""
+    if analysis in ANALYSES or analysis == "none":
+        return analysis
+    return {"walking": "gait", "sit_to_stand": "sts"}.get(motion_type, "none")
 
 
 class IntrinsicsStart(BaseModel):
@@ -198,6 +213,8 @@ def start_trial(sid: str, body: TrialStart):
             raise HTTPException(409, "중립 자세(체형 스케일링)를 먼저 완료하세요.")
         if body.motion_type != L.NO_KINETICS and body.motion_type not in L.KINETIC_MOTIONS:
             raise HTTPException(400, "알 수 없는 동작 종류")
+        if body.analysis not in ("auto", "none") + ANALYSES:
+            raise HTTPException(400, "analysis 는 auto | gait | sts | none")
         base = L.safe_name(body.name or body.motion_type or "trial")
         tid, n = base, 1
         while any(t["id"] == tid for t in s["trials"]):
@@ -210,6 +227,7 @@ def start_trial(sid: str, body: TrialStart):
     trial = {"id": tid, "type": body.type, "state": "recording", "created": now_ms(), "start_at_ms": start_at,
              "motion_type": body.motion_type if body.type == "dynamic" else L.NO_KINETICS,
              "kinetics_params": {"repetition": body.repetition, "time_window": body.time_window},
+             "analysis": resolve_analysis(body.analysis, body.motion_type) if body.type == "dynamic" else "none",
              "uploads": {}, "error": None, "jobs": {}}
 
     def add(s_):
@@ -337,6 +355,29 @@ def request_kinetics(sid: str, tid: str, body: KineticsRequest):
     return job
 
 
+@app.post("/api/sessions/{sid}/trials/{tid}/activity")
+def request_activity(sid: str, tid: str, body: ActivityRequest):
+    s = get_session(sid)
+    t = _trial(s, tid)
+    if t["type"] != "dynamic" or body.analysis not in ANALYSES:
+        raise HTTPException(400, "동작 시행에 gait 또는 sts 분석만 할 수 있습니다.")
+    if not L.kinematics_mot(DATA, sid, tid).exists():
+        raise HTTPException(409, "운동학(관절각) 처리가 먼저 끝나야 합니다.")
+    return _enqueue_activity(sid, tid, body.analysis)
+
+
+def _enqueue_activity(sid, tid, analysis):
+    job = store.enqueue("activity", session=sid, trial=tid, analysis=analysis)
+
+    def upd(s_):
+        tt = _trial(s_, tid)
+        tt["jobs"]["activity"] = job["id"]
+        tt.update(analysis=analysis, activity_state="queued", activity_error=None)
+
+    store.mutate_session(sid, upd)
+    return job
+
+
 def _enqueue_kinetics(sid, tid, motion_type, repetition, time_window, case="0"):
     job = store.enqueue("kinetics", session=sid, trial=tid, motion_type=motion_type, repetition=repetition,
                         time_window=time_window, case=case)
@@ -369,9 +410,20 @@ def sync_jobs() -> None:
                         tt = _trial(s_, tid)
                         tt.update(state=j["state"], error=j.get("error"), outputs=j.get("outputs"), stage=None, stale=False)
                     store.mutate_session(s["id"], fin)
+                    # 지표 분석(수 초)을 동역학(수십 분)보다 먼저 큐에 넣는다
+                    if j["state"] == "done" and t["type"] == "dynamic" and t.get("analysis") in ANALYSES:
+                        _enqueue_activity(s["id"], t["id"], t["analysis"])
                     if j["state"] == "done" and t["type"] == "dynamic" and t.get("motion_type", L.NO_KINETICS) in L.KINETIC_MOTIONS:
                         p = t.get("kinetics_params") or {}
                         _enqueue_kinetics(s["id"], t["id"], t["motion_type"], p.get("repetition"), p.get("time_window"))
+            act_id = t.get("jobs", {}).get("activity")
+            if act_id and t.get("activity_state") in ("queued", "processing"):
+                j = store.job(act_id)
+                if j and j["state"] == "running":
+                    store.mutate_session(s["id"], lambda s_, tid=t["id"]: _trial(s_, tid).update(activity_state="processing"))
+                elif j and j["state"] in ("done", "error"):
+                    store.mutate_session(s["id"], lambda s_, tid=t["id"], j=j: _trial(s_, tid).update(
+                        activity_state=j["state"], activity_error=j.get("error")))
             kin_id = t.get("jobs", {}).get("kinetics")
             if kin_id and t.get("kinetics_state") in ("queued", "processing"):
                 j = store.job(kin_id)
@@ -411,6 +463,9 @@ def results(sid: str, tid: str):
     if mot.exists():
         out["kinematics"] = L.read_mot(mot)
     out["has_visualizer"] = _visualizer_path(sid, tid) is not None
+    act = L.session_dir(DATA, sid) / "OpenSimData" / "Activity" / tid / "physiocap_activity.json"
+    if act.exists():
+        out["activity"] = _read(act)
     dyn = L.dynamics_dir(DATA, sid, tid) / "physiocap_summary.json"
     if dyn.exists():
         out["kinetics"] = _read(dyn)

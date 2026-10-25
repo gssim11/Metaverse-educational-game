@@ -17,6 +17,7 @@ PROC_DIR = Path(os.environ.get("OPENCAP_PROCESSING_DIR", "/opencap-processing"))
 DATA = Path(os.environ.get("PHYSIOCAP_DATA", "/data/physiocap"))
 sys.path.insert(0, str(PROC_DIR))
 sys.path.insert(0, str(PROC_DIR / "UtilsDynamicSimulations" / "OpenSimAD"))
+sys.path.insert(0, str(PROC_DIR / "ActivityAnalyses"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import layout as L  # noqa: E402
@@ -102,16 +103,116 @@ def run_kinetics(job: dict) -> dict:
     return {"result_dir": str(res_dir.relative_to(DATA)), "series": sorted(summary["series"]), "iterations": summary["iterations"]}
 
 
+# ---------------------------------------------------------------- 동작 지표 분석 (opencap-processing/ActivityAnalyses)
+# compute_<이름> 메서드 이름 그대로. example_gait_analysis.py / example_sts_analysis.py 의 기본 목록 + 나머지 스칼라 지표
+GAIT_SCALARS = ["gait_speed", "stride_length", "step_length", "step_length_symmetry", "step_width", "cadence",
+                "stance_time", "swing_time", "single_support_time", "double_support_time",
+                "midswing_dorsiflexion_angle", "midswing_ankle_heigh_dif"]
+STS_SCALARS = ["rise_time", "sts_time", "torso_orientation", "torso_angular_velocity",
+               "torso_orientation_liftoff", "torso_angular_velocity_liftoff"]
+
+
+def mirror_opencap_download_layout(sid: str, tid: str) -> None:
+    """OpenCap 클라우드에서 내려받은 세션과 같은 위치에 파일을 둔다.
+
+    클라우드는 MarkerData/PostAugmentation/<trial>.trc 와 Settings_<trial>.yaml 을 올리고,
+    opencap-processing 은 이를 MarkerData/<trial>.trc, MarkerData/Settings/settings_<trial>.yaml 로 받아 쓴다.
+    """
+    import shutil
+    sd = L.session_dir(DATA, sid)
+    src = sd / "MarkerData" / "PostAugmentation" / f"{tid}.trc"
+    if not src.exists():
+        raise RuntimeError("보강된 마커 데이터(TRC)가 없습니다. 운동학 처리를 먼저 하세요.")
+    shutil.copy2(src, sd / "MarkerData" / f"{tid}.trc")
+    st = sd / "MarkerData" / "PostAugmentation" / f"Settings_{tid}.yaml"
+    if st.exists():
+        (sd / "MarkerData" / "Settings").mkdir(parents=True, exist_ok=True)
+        shutil.copy2(st, sd / "MarkerData" / "Settings" / f"settings_{tid}.yaml")
+
+
+def _num(v):
+    import numpy as np
+    if isinstance(v, dict):  # 예: step_length → {'r': .., 'l': ..}
+        return {str(k): _num(x) for k, x in v.items()}
+    a = np.asarray(v, dtype=float)
+    if a.ndim == 0:
+        return float(a) if np.isfinite(a) else None
+    return [float(x) if np.isfinite(x) else None for x in a.ravel()]
+
+
+def _scalars(obj, names) -> dict:
+    out = {}
+    for n in names:
+        try:
+            mean = obj.compute_scalars([n])[n]
+            entry = {"value": _num(mean["value"]), "units": mean["units"]}
+            try:
+                entry["per_cycle"] = _num(obj.compute_scalars([n], return_all=True)[n]["value"])
+            except Exception:  # noqa: BLE001
+                pass
+            out[n] = entry
+        except Exception as e:  # noqa: BLE001  — 한 지표가 실패해도 나머지는 계산
+            out[n] = {"value": None, "units": "", "error": str(e)[:200]}
+    return out
+
+
+def _curves(norm: dict) -> dict:
+    cols = list(norm["mean"].columns)
+    keep = [c for c in cols if c != "time"]
+    return {"x": list(range(101)), "mean": {c: _num(norm["mean"][c]) for c in keep},
+            "sd": {c: _num(norm["sd"][c]) for c in keep} if norm.get("sd") is not None else None}
+
+
+def run_activity(job: dict) -> dict:
+    sid, tid, kind = job["session"], job["trial"], job["analysis"]
+    sd = str(L.session_dir(DATA, sid))
+    mirror_opencap_download_layout(sid, tid)
+    update_running(DATA, job, stage=f"{kind} 지표 분석")
+    out = {"analysis": kind, "trial": tid, "source": "opencap-processing ActivityAnalyses"}
+    if kind == "gait":
+        from gait_analysis import gait_analysis
+        out["legs"] = {}
+        for leg in ("r", "l"):
+            try:
+                g = gait_analysis(sd, tid, leg=leg, lowpass_cutoff_frequency_for_coordinate_values=6, n_gait_cycles=-1)
+                ev = g.gaitEvents
+                out["legs"][leg] = {
+                    "n_cycles": int(g.nGaitCycles),
+                    "scalars": _scalars(g, GAIT_SCALARS),
+                    "curves": _curves(g.get_coordinates_normalized_time()),
+                    "events": {"names": list(ev.get("eventNamesIpsilateral", [])),
+                               "times": _num(ev["ipsilateralTime"]) if "ipsilateralTime" in ev else None},
+                }
+            except Exception as e:  # noqa: BLE001
+                out["legs"][leg] = {"error": str(e)[:500]}
+        if all("error" in v for v in out["legs"].values()):
+            raise RuntimeError("보행 주기를 찾지 못했습니다: " + out["legs"]["r"]["error"])
+    elif kind == "sts":
+        from sts_analysis import sts_analysis
+        s = sts_analysis(sd, tid, n_sts_cycles=-1, lowpass_cutoff_frequency_for_coordinate_values=6)
+        t = s.coordinateValues["time"].to_numpy()
+        ev = {k: [float(t[i]) for i in s.stsEvents[k]] for k in ("startRisingIdx", "endRisingIdx", "sittingIdx", "forwardLeanIdx") if k in s.stsEvents}
+        out.update(n_cycles=int(s.n_sts_cycles), scalars=_scalars(s, STS_SCALARS), events=ev)
+    else:
+        raise ValueError(f"unknown analysis {kind}")
+    dst = L.session_dir(DATA, sid) / "OpenSimData" / "Activity" / tid
+    dst.mkdir(parents=True, exist_ok=True)
+    with open(dst / "physiocap_activity.json", "w") as f:
+        json.dump(out, f, ensure_ascii=False)
+    return {"analysis": kind, "file": str((dst / "physiocap_activity.json").relative_to(DATA))}
+
+
 def loop() -> None:
     print("PhysioCap kinetics worker ready", DATA, flush=True)
     while True:
-        job = claim_job(DATA, {"kinetics"})
+        job = claim_job(DATA, {"activity", "kinetics"})
         if not job:
             time.sleep(1.0)
             continue
-        print("job", job["id"], job["session"], job["trial"], job["motion_type"], flush=True)
+        print("job", job["id"], job["kind"], job["session"], job["trial"], job.get("motion_type") or job.get("analysis"), flush=True)
         try:
-            finish_job(DATA, job, ok=True, outputs=run_kinetics(job))
+            outputs = run_activity(job) if job["kind"] == "activity" else run_kinetics(job)
+            finish_job(DATA, job, ok=True, outputs=outputs)
         except Exception as e:  # noqa: BLE001
             traceback.print_exc()
             msg = e.args[0] if e.args and isinstance(e.args[0], str) else repr(e)
