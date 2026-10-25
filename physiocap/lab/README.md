@@ -35,6 +35,17 @@ docker compose up -d --build        # 처음 빌드는 30분~1시간 (OpenCap �
 docker compose ps                    # server, core, mmpose, kinetics 가 running 이면 정상
 ```
 
+설치가 끝나면 아래 자가 검증을 돌려 보세요. OpenCap 공식 테스트 세션(실제 iPhone 2대 영상, 약 500 MB)을 이 PC의 워커로 처리하고, OpenCap 기준 결과와 OpenCap 자체 테스트 기준으로 비교합니다. GPU 포즈 인식은 미리 계산된 HRNet 결과로 건너뛰고, 나머지 단계(동기화, 삼각측량, LSTM 마커 보강, OpenSim 역기구학)를 검증합니다.
+
+```bash
+docker compose run --rm core python3.8 /workspace/physiocap/selftest.py
+```
+
+개발 환경(CPU, GPU 없음)에서 돌린 결과는 다음과 같습니다.
+
+- **squats**: OpenCap 기준 결과와 일치합니다(마커 궤적 오차 1e-3 이내, 관절각 기준 통과).
+- **walk**: 마커 궤적은 일치합니다. 관절각은 왼쪽 어깨 회전(`arm_rot_l`) RMSE가 0.54°로 OpenCap 테스트 기준 0.5°를 조금 넘었습니다. 하지만 같은 환경에서 OpenCap 원본 테스트(`tests/test_main.py`)를 직접 돌려도 똑같이 실패합니다. PhysioCap 워커의 출력은 OpenCap `main()`을 직접 호출한 결과와 최대 차이 0.0으로 같았습니다. 전체 관절의 RMSE 중앙값은 0.086°입니다.
+
 브라우저에서 `http://localhost:8000` 을 엽니다. 폰은 `http://<PC 내부 IP>:8000` 으로 접속하므로 PC 방화벽에서 8000번 포트를 허용하세요.
 
 ## 사용 순서
