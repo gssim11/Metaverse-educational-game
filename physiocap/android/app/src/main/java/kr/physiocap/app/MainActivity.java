@@ -259,6 +259,11 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
+        public void openLab() {
+            runOnUiThread(() -> startActivity(new Intent(MainActivity.this, LabActivity.class)));
+        }
+
+        @JavascriptInterface
         public void speak(String text) {
             if (ttsReady) tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "physiocap");
         }

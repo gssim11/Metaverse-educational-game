@@ -26,6 +26,16 @@ jobs:
       - name: 분석 엔진 단위 테스트
         run: npm test
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 연구실 서버·워커 테스트
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+          pip install -q -r lab/server/requirements.txt pytest httpx numpy
+          python -m pytest -q lab/tests
+
       - name: MediaPipe 런타임·모델 받기 (오프라인 번들)
         run: bash scripts/fetch-assets.sh
 

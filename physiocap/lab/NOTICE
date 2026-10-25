@@ -1,0 +1,13 @@
+PhysioCap Lab
+Copyright 2026 PhysioCap contributors
+
+This product runs, without modification, software developed by the
+Stanford Neuromuscular Biomechanics Laboratory (OpenCap):
+  - opencap-core       https://github.com/stanfordnmbl/opencap-core       (Apache License 2.0)
+  - opencap-processing https://github.com/stanfordnmbl/opencap-processing (Apache License 2.0)
+The Docker images built by docker-compose.yml clone those repositories at the
+pinned commits listed in worker_core/Dockerfile and worker_kinetics/Dockerfile.
+
+Uhlrich SD, Falisse A, Kidziński Ł, et al. OpenCap: Human movement dynamics
+from smartphone videos. PLoS Comput Biol. 2023;19(10):e1011462.
+doi:10.1371/journal.pcbi.1011462

@@ -727,6 +727,10 @@ function openSettings() {
 
 // ---------- 이벤트 연결 ----------
 $('#btnSettings').addEventListener('click', openSettings);
+if (window.AndroidBridge?.openLab) {
+  $('#btnLab').hidden = false;
+  $('#btnLab').addEventListener('click', () => window.AndroidBridge.openLab());
+}
 $('#btnBack').addEventListener('click', () => { closeCapture(); show('home'); renderHome(); });
 $('#btnHome').addEventListener('click', () => {
   view.overlay = false; cancelAnimationFrame(view.raf);

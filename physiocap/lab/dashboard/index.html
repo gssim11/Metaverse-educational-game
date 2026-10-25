@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PhysioCap Lab</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="bar">
+  <div><b>PhysioCap Lab</b> <span class="muted">갤럭시 2대 · OpenCap 파이프라인</span></div>
+  <span id="health" class="pill">연결 확인 중…</span>
+</header>
+
+<main>
+  <nav class="tabs">
+    <button data-tab="sessions" class="on">세션</button>
+    <button data-tab="devices">폰 연결</button>
+    <button data-tab="intrinsics">렌즈 보정</button>
+  </nav>
+
+  <!-- 폰 연결 -->
+  <section id="tab-devices" class="tab">
+    <div class="card">
+      <h2>1. 폰을 서버에 연결</h2>
+      <p>두 폰에서 PhysioCap 앱 → <b>연구실 모드</b>를 열고 아래 QR 을 스캔하거나 주소를 입력하세요. 폰과 이 PC 는 같은 Wi-Fi 에 있어야 합니다.</p>
+      <div class="row">
+        <div id="qr" class="qr"></div>
+        <div>
+          <label>서버 주소 (폰에서 접속할 PC 주소)
+            <input id="serverUrl" placeholder="http://192.168.0.10:8000">
+          </label>
+          <p class="muted">localhost 가 아니라 PC 의 내부 IP 를 넣으세요. Windows: <code>ipconfig</code>, Linux: <code>ip addr</code></p>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>연결된 폰</h2>
+      <table id="devTable" class="tbl"></table>
+    </div>
+  </section>
+
+  <!-- 렌즈 보정 -->
+  <section id="tab-intrinsics" class="tab">
+    <div class="card">
+      <h2>기종별 렌즈 보정 (기종·해상도·프레임률마다 1회)</h2>
+      <p>OpenCap 은 iPhone 기종별 렌즈 값을 미리 갖고 있지만 갤럭시 값은 없어 직접 만들어야 합니다. 인쇄한 체커보드를 폰 앞에서 천천히 여러 방향·거리로 30~60초 비추세요(화면 가장자리까지 골고루).</p>
+      <div class="grid3">
+        <label>폰 <select id="intrDevice"></select></label>
+        <label>가로 내부 코너 수 <input id="intrCols" type="number" value="5"></label>
+        <label>세로 내부 코너 수 <input id="intrRows" type="number" value="4"></label>
+        <label>칸 한 변 (mm) <input id="intrSquare" type="number" value="35"></label>
+      </div>
+      <div class="row">
+        <button id="intrStart" class="primary">녹화 시작</button>
+        <button id="intrStop">정지·업로드</button>
+      </div>
+      <h3>보정된 기종</h3>
+      <ul id="intrModels"></ul>
+      <h3>캡처 기록</h3>
+      <table id="intrTable" class="tbl"></table>
+    </div>
+  </section>
+
+  <!-- 세션 -->
+  <section id="tab-sessions" class="tab on">
+    <div class="split">
+      <div class="card">
+        <h2>새 세션</h2>
+        <div class="grid3">
+          <label>세션 이름 <input id="sName" placeholder="예: 홍길동_1회차"></label>
+          <label>키 (m) <input id="sHeight" type="number" step="0.01" value="1.70"></label>
+          <label>체중 (kg) <input id="sMass" type="number" step="0.1" value="65"></label>
+          <label>성별 <select id="sSex"><option value="m">남</option><option value="f">여</option></select></label>
+          <label>Cam0 <select id="sCam0"></select></label>
+          <label>Cam1 <select id="sCam1"></select></label>
+          <label>체커보드 가로 코너 <input id="sCols" type="number" value="5"></label>
+          <label>세로 코너 <input id="sRows" type="number" value="4"></label>
+          <label>칸 (mm) <input id="sSquare" type="number" value="35"></label>
+          <label>체커보드 위치 <select id="sPlace"><option value="backWall">세워 둠(정면 벽/의자)</option><option value="ground">바닥에 눕힘</option></select></label>
+          <label>포즈 인식 <select id="sPose"><option value="hrnet">HRNet (OpenCap 기본)</option><option value="openpose">OpenPose</option></select></label>
+        </div>
+        <button id="sCreate" class="primary">세션 만들기</button>
+        <h3>세션 목록</h3>
+        <ul id="sessionList" class="list"></ul>
+      </div>
+
+      <div class="card" id="sessionView" hidden>
+        <h2 id="svTitle"></h2>
+        <p id="svSub" class="muted"></p>
+        <ol class="steps">
+          <li><b>체커보드 보정</b> — 두 폰 모두에 체커보드가 또렷이 보이게 두고 1~2초 녹화 <button data-trial="calibration">녹화</button></li>
+          <li><b>중립 자세(체형 스케일링)</b> — 체커보드 치우고, 정면 보고 팔을 몸에서 약간 떼고 3~5초 서 있기 <button data-trial="neutral">녹화</button></li>
+          <li><b>동작 시행</b>
+            <div class="grid3">
+              <label>시행 이름 <input id="tName" placeholder="squat1"></label>
+              <label>동역학 동작 <select id="tMotion"></select></label>
+              <label>반복 번호(스쿼트·STS, 0부터) <input id="tRep" type="number" value="0"></label>
+              <label>구간 시작(s) <input id="tT0" type="number" step="0.01" placeholder="보행·점프"></label>
+              <label>구간 끝(s) <input id="tT1" type="number" step="0.01" placeholder="2초 이하 권장"></label>
+            </div>
+            <button data-trial="dynamic" class="primary">녹화</button>
+          </li>
+        </ol>
+        <div class="row"><button id="stopBtn" class="danger" hidden>■ 녹화 정지·업로드</button><span id="recInfo"></span></div>
+        <table id="trialTable" class="tbl"></table>
+      </div>
+    </div>
+
+    <div class="card" id="resultView" hidden>
+      <h2 id="rvTitle"></h2>
+      <div id="rvNotes"></div>
+      <h3>관절각 (OpenSim 역기구학)</h3>
+      <div id="kinChips" class="chips"></div>
+      <canvas id="kinChart" class="chart"></canvas>
+      <div id="kinBox">
+        <h3>동역학 (근육 구동 시뮬레이션)</h3>
+        <div class="row"><select id="kinSeries"></select></div>
+        <div id="dynChips" class="chips"></div>
+        <canvas id="dynChart" class="chart"></canvas>
+      </div>
+      <div id="calImgs" class="imgs"></div>
+      <h3>파일</h3>
+      <ul id="rvFiles" class="files"></ul>
+    </div>
+  </section>
+</main>
+<script src="vendor/qrcode.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
