@@ -12,21 +12,86 @@ param(
     [switch]$Uninstall,
     [string]$Branch = "ccr-8373bb47-hg1mx9",
     [int]$EveryMinutes = 30,
-    [string]$RepoUrl = "https://github.com/gssim11/Metaverse-educational-game.git"
+    [string]$RepoUrl = "https://github.com/gssim11/Metaverse-educational-game.git",
+    [string]$CoworkDir = (Join-Path $env:USERPROFILE "Documents\Cowork")
 )
 
 $ErrorActionPreference = "Stop"
-$CoworkDir = Join-Path $env:USERPROFILE "Documents\Cowork"
 $Dest     = Join-Path $CoworkDir "PhysioCap"
 $LogFile  = Join-Path $CoworkDir "PhysioCap_sync.log"
 $TaskName = "PhysioCap Sync"
 $SelfCopy = Join-Path $CoworkDir "sync_to_cowork.ps1"
 
+$FallbackLog = Join-Path $env:LOCALAPPDATA "PhysioCap\PhysioCap_sync.log"
+
 function Log([string]$msg) {
+    # Logging must never stop the sync: if the Cowork folder cannot be written, log to %LOCALAPPDATA% instead.
     $line = "{0}  {1}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $msg
     Write-Host $line
-    New-Item -ItemType Directory -Force -Path $CoworkDir | Out-Null
-    Add-Content -Path $LogFile -Value $line -Encoding UTF8
+    foreach ($f in @($LogFile, $FallbackLog)) {
+        try {
+            New-Item -ItemType Directory -Force -Path (Split-Path $f) -ErrorAction Stop | Out-Null
+            Add-Content -Path $f -Value $line -Encoding UTF8 -ErrorAction Stop
+            return
+        } catch { }
+    }
+}
+
+function Test-Writable([string]$dir) {
+    try {
+        New-Item -ItemType Directory -Force -Path $dir -ErrorAction Stop | Out-Null
+        $probe = Join-Path $dir (".physiocap_write_test_" + [guid]::NewGuid().ToString("N"))
+        [IO.File]::WriteAllText($probe, "ok")
+        Remove-Item $probe -Force -ErrorAction SilentlyContinue
+        return $true
+    } catch { return $false }
+}
+
+function Get-CfaEnabled {
+    # Windows Security > Ransomware protection > Controlled folder access (1 = on, 2 = audit only).
+    try { return ((Get-MpPreference -ErrorAction Stop).EnableControlledFolderAccess -eq 1) } catch { return $false }
+}
+
+function Get-AppsToAllow {
+    $apps = @((Get-Command powershell.exe -ErrorAction SilentlyContinue).Source)
+    $git = (Get-Command git -ErrorAction SilentlyContinue).Source
+    if ($git) {
+        # cmd\git.exe starts mingw64\bin\git.exe, which does the writing; HTTPS downloads go through git-remote-https.exe.
+        $root = Split-Path (Split-Path $git)
+        $apps += $git
+        $apps += Get-ChildItem -Path $root -Recurse -Include git.exe, git-remote-https.exe -ErrorAction SilentlyContinue |
+            ForEach-Object { $_.FullName }
+    }
+    return $apps | Where-Object { $_ } | Sort-Object -Unique
+}
+
+function Resolve-Writable {
+    if (Test-Writable $CoworkDir) { return }
+    Write-Host ""
+    Write-Host "[$CoworkDir] 폴더에 파일을 만들 수 없습니다."
+    if (-not (Get-CfaEnabled)) {
+        throw "Cannot write to $CoworkDir. Check that the folder exists and is not read-only, or run with -CoworkDir '<another folder>'."
+    }
+    Write-Host "원인: Windows 보안의 '제어된 폴더 액세스'(랜섬웨어 방지)가 문서 폴더 쓰기를 막고 있습니다."
+    Write-Host "PowerShell과 Git만 허용 목록에 추가하면 됩니다(다른 설정은 바꾸지 않음):"
+    $apps = Get-AppsToAllow
+    $apps | ForEach-Object { Write-Host "   $_" }
+    if (-not $Install) { throw "Controlled folder access blocks $CoworkDir. Run sync_to_cowork.bat once to allow PowerShell and Git." }
+    $ans = Read-Host "관리자 권한으로 위 프로그램을 허용할까요? 다음 창에서 '예'를 누르세요 (Y/N)"
+    if ($ans -notmatch '^[Yy]') {
+        Write-Host "직접 하려면: Windows 보안 > 바이러스 및 위협 방지 > 랜섬웨어 방지 관리 > '제어된 폴더 액세스를 통해 앱 허용' > 앱 추가 > 최근에 차단된 앱에서 powershell.exe, git.exe 등을 허용"
+        throw "Not allowed; nothing was changed."
+    }
+    $list = ($apps | ForEach-Object { "'" + ($_ -replace "'", "''") + "'" }) -join ","
+    $cmd = "Add-MpPreference -ControlledFolderAccessAllowedApplications @($list)"
+    try {
+        Start-Process powershell.exe -Verb RunAs -Wait -ArgumentList "-NoProfile -ExecutionPolicy Bypass -Command $cmd"
+    } catch { throw "The administrator prompt was cancelled; nothing was changed." }
+    Start-Sleep -Seconds 2
+    if (-not (Test-Writable $CoworkDir)) {
+        throw "Still blocked. Open Windows Security > Ransomware protection > Allow an app, and allow the apps under 'Recently blocked apps'."
+    }
+    Log "PowerShell and Git were allowed through Controlled folder access."
 }
 
 function Invoke-Git {
@@ -106,7 +171,7 @@ function Sync-Repo {
 function Register-SyncTask {
     Copy-Item -Path $PSCommandPath -Destination $SelfCopy -Force
     $action = New-ScheduledTaskAction -Execute "powershell.exe" `
-        -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$SelfCopy`" -Branch $Branch"
+        -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$SelfCopy`" -Branch $Branch -CoworkDir `"$CoworkDir`""
     $repeat = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) `
         -RepetitionInterval (New-TimeSpan -Minutes $EveryMinutes)
     $logon  = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
@@ -131,6 +196,7 @@ try {
         exit 0
     }
     Ensure-Git
+    Resolve-Writable
     Sync-Repo
     if ($Install) {
         Register-SyncTask
@@ -139,6 +205,7 @@ try {
     }
 } catch {
     Log "ERROR: $($_.Exception.Message)"
+    if ($Install) { Write-Host "Log: $LogFile (if missing: $FallbackLog)" }
     if ($Install) { Read-Host "Press Enter to close" | Out-Null }
     exit 1
 }
