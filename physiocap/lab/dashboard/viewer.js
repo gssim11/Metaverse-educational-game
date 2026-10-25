@@ -119,7 +119,7 @@ export class Viewer {
     for (const side of sides) {
       const g = (a) => grf.data[`ground_force_${side}_v${a}`], c = (a) => cop.data[`ground_force_${side}_p${a}`];
       if (!g('x') || !c('x')) continue;
-      const arrow = new THREE.ArrowHelper(new THREE.Vector3(0, 1, 0), new THREE.Vector3(), 1, side.startsWith('r') ? 0xf72585 : 0x4cc9f0, 0.08, 0.05);
+      const arrow = makeArrow(side.startsWith('r') ? 0xf72585 : 0x4cc9f0);
       arrow.visible = false;
       this.root.add(arrow);
       this.forces.push({ arrow, t: kin.time, gx: g('x'), gy: g('y'), gz: g('z'), cx: c('x'), cy: c('y'), cz: c('z'), scale: toBW ?? 1 / 1000 });
@@ -165,8 +165,11 @@ export class Viewer {
       f.arrow.visible = inRange && len > 0.02;
       if (f.arrow.visible) {
         f.arrow.position.set(f.cx[k], f.cy[k], f.cz[k]);
-        f.arrow.setDirection(v.normalize());
-        f.arrow.setLength(len, Math.min(0.1, len * 0.3), 0.05);
+        f.arrow.quaternion.setFromUnitVectors(UP, v.normalize());
+        const head = Math.min(0.09, len * 0.35);
+        f.arrow.userData.shaft.scale.set(1, Math.max(0.001, len - head), 1);
+        f.arrow.userData.head.scale.set(1, head / 0.09, 1);
+        f.arrow.userData.head.position.y = len - head;
       }
     }
     if (this.follow && this.bodies.pelvis) {
@@ -222,6 +225,22 @@ export class Viewer {
     this.renderer.dispose();
     this.el.innerHTML = '';
   }
+}
+
+const UP = new THREE.Vector3(0, 1, 0);
+
+// 굵은 3D 화살표(원기둥 + 원뿔). 길이는 setFrame 에서 축척으로 조절
+function makeArrow(color) {
+  const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.4, emissive: color, emissiveIntensity: 0.25 });
+  const shaftGeo = new THREE.CylinderGeometry(0.011, 0.011, 1, 12);
+  shaftGeo.translate(0, 0.5, 0); // 밑동이 원점(압력중심)
+  const headGeo = new THREE.ConeGeometry(0.03, 0.09, 16);
+  headGeo.translate(0, 0.045, 0);
+  const g = new THREE.Group();
+  const shaft = new THREE.Mesh(shaftGeo, mat), head = new THREE.Mesh(headGeo, mat);
+  g.add(shaft, head);
+  g.userData = { shaft, head };
+  return g;
 }
 
 function nearest(arr, v) {

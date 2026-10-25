@@ -99,7 +99,9 @@ def test_kinetics_summary_and_call(tmp_path, monkeypatch):
         d = Path(dataFolder) / sid / "OpenSimData" / "Dynamics" / "squat_rep1"
         d.mkdir(parents=True)
         t = np.linspace(0, 1, 5)
-        res = {case: {"time": t, "GRF_BW": np.ones((6, 5)) * 50, "GRF_labels": ["GRF_x_r", "GRF_y_r", "GRF_z_r", "GRF_x_l", "GRF_y_l", "GRF_z_l"],
+        lab = [f"ground_force_{s}_v{a}" for s in ("right", "left") for a in "xyz"]  # 실제 OpenSimAD 결과의 라벨 형식
+        res = {case: {"time": np.linspace(0, 1, 6)[None, :], "GRF_BW": np.ones((6, 5)) * 50, "GRF_labels": lab,
+                      "COP": np.zeros((6, 5)), "COP_labels": [x.replace("_v", "_p") for x in lab],
                       "torques_BWht": np.zeros((2, 5)), "torque_labels": ["knee_angle_r", "knee_angle_l"],
                       "muscle_activations": np.full((3, 4), 0.2), "muscles": ["a", "b", "c"], "iter": 120}}
         np.save(d / "optimaltrajectories.npy", res)
@@ -116,7 +118,9 @@ def test_kinetics_summary_and_call(tmp_path, monkeypatch):
     assert got == {"dataFolder": str(data / "Data"), "sid": "S1", "trial": "squat", "motion": "squats", "tw": None, "rep": 1, "treadmill": 0, "side": "all"}
     assert out["result_dir"] == "Data/S1/OpenSimData/Dynamics/squat_rep1" and out["iterations"] == 120
     summ = json.loads((data / "Data" / "S1" / "OpenSimData" / "Dynamics" / "squat" / "physiocap_summary.json").read_text())
-    assert summ["series"]["GRF_BW"]["data"]["GRF_y_r"] == [50.0] * 5
+    assert summ["series"]["GRF_BW"]["data"]["ground_force_right_vy"] == [50.0] * 5
+    assert summ["series"]["COP"]["data"]["ground_force_left_pz"] == [0.0] * 5
+    assert len(summ["time"]) == 6  # 상태 격자(N+1) vs 제어 격자(N): 값은 앞쪽 N개로 맞춤
     assert len(summ["series"]["muscle_activations"]["data"]["a"]) == 4
     assert "검증하지 않았다" in summ["note"]
 

@@ -46,6 +46,14 @@ docker compose run --rm core python3.8 /workspace/physiocap/selftest.py
 - **squats**: OpenCap 기준 결과와 일치합니다(마커 궤적 오차 1e-3 이내, 관절각 기준 통과).
 - **walk**: 마커 궤적은 일치합니다. 관절각은 왼쪽 어깨 회전(`arm_rot_l`) RMSE가 0.54°로 OpenCap 테스트 기준 0.5°를 조금 넘었습니다. 하지만 같은 환경에서 OpenCap 원본 테스트(`tests/test_main.py`)를 직접 돌려도 똑같이 실패합니다. PhysioCap 워커의 출력은 OpenCap `main()`을 직접 호출한 결과와 최대 차이 0.0으로 같았습니다. 전체 관절의 RMSE 중앙값은 0.086°입니다.
 
+동역학도 같은 환경에서 끝까지 돌려 확인했습니다. 위 squats 결과(첫 번째 반복, 3.2초 구간)로 opencap-processing의 근육 구동 시뮬레이션을 실행했습니다.
+
+- IPOPT가 551회 반복 끝에 "Optimal Solution Found"로 수렴했습니다. CPU 4코어에서 약 61분 걸렸습니다.
+- 지면반력, 관절 모멘트 33개, 근활성·근력 80개, 무릎 내전 모멘트, 내측 무릎 접촉력이 나왔습니다.
+- 수직 지면반력 합의 평균은 체중의 99.6%로, 스쿼트에서 기대되는 값(약 체중)과 맞았습니다.
+
+학과 PC에서도 동역학은 CPU로 계산하므로, 시행 하나에 수십 분이 걸린다고 보세요.
+
 브라우저에서 `http://localhost:8000` 을 엽니다. 폰은 `http://<PC 내부 IP>:8000` 으로 접속하므로 PC 방화벽에서 8000번 포트를 허용하세요.
 
 ## 사용 순서

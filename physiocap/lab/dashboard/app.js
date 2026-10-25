@@ -178,7 +178,8 @@ async function openResult(tid) {
     $('#kinSeries').innerHTML = keys.map((k) => `<option value="${k}">${label[k] || k}</option>`).join('');
     const show = () => {
       const k = $('#kinSeries').value, sr = r.kinetics.series[k];
-      const def = sr.labels.filter((l) => /_y_|knee|hip_flex|ankle/.test(l)).slice(0, 4);
+      // 기본 표시: 수직 지면반력(좌·우), 무릎·고관절·발목, 대둔근·대퇴사두 등
+      const def = sr.labels.filter((l) => /_vy$|_y_[rl]$|knee_angle|hip_flexion|ankle_angle|knee_adduction|medial_knee|glmax1|vasmed|soleus/.test(l)).slice(0, 4);
       chipChart('#dynChips', '#dynChart', r.kinetics.time, sr.data, def.length ? def : sr.labels.slice(0, 3), sr.unit);
     };
     $('#kinSeries').onchange = show;
