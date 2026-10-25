@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>고니오미터 예비 연구 기록지</title>
+<style>
+  @page { size: A4; margin: 12mm; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #fff; color: #111; font: 10.5pt/1.45 'Noto Sans KR', 'Malgun Gothic', system-ui, sans-serif; }
+  .page { max-width: 186mm; margin: 0 auto; padding: 2mm 0; }
+  .page + .page { break-before: page; }
+  h1 { font-size: 15pt; margin: 0 0 2mm; }
+  h2 { font-size: 11.5pt; margin: 4mm 0 1.5mm; border-bottom: 1.5px solid #111; padding-bottom: 1mm; }
+  .sub { color: #555; font-size: 9pt; margin: 0 0 3mm; }
+  table { width: 100%; border-collapse: collapse; margin: 1mm 0; }
+  th, td { border: 1px solid #555; padding: 1.6mm 2mm; text-align: left; vertical-align: middle; }
+  th { background: #eee; font-weight: 600; font-size: 9.5pt; }
+  td.blank { height: 8.5mm; }
+  td.num { width: 17mm; }
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; }
+  .grid div { border: 1px solid #555; margin: -0.5px; padding: 1.5mm 2mm; min-height: 11mm; font-size: 9pt; color: #444; }
+  .note { border: 1px dashed #777; padding: 2mm 3mm; font-size: 9pt; margin: 2mm 0; }
+  .check { font-size: 9.5pt; margin: 1mm 0; }
+  .box { display: inline-block; width: 3.5mm; height: 3.5mm; border: 1px solid #111; margin-right: 1.5mm; vertical-align: -0.5mm; }
+  ol, ul { margin: 1mm 0 1mm 5mm; padding: 0; }
+  li { margin: 0.8mm 0; }
+  .muted { color: #666; }
+  @media screen { body { background: #f3f3f3; } .page { background: #fff; padding: 12mm; margin: 6mm auto; box-shadow: 0 1px 4px rgba(0,0,0,.15); } }
+  @media screen and (max-width: 700px) { .page { padding: 16px; } .grid { grid-template-columns: 1fr 1fr; } table { font-size: 9pt; } }
+</style>
+</head>
+<body>
+
+<!-- 1쪽: 대상자 1명당 1장 -->
+<section class="page">
+  <h1>PhysioCap 예비 연구 — 고니오미터 기록지</h1>
+  <p class="sub">과제: 스쿼트 최저점 유지(5초) · 오른쪽 · 관절당 3회 · 대상자 1명당 1장 · 각도는 정수(°)로 기록</p>
+
+  <h2>A. 대상자·측정 정보</h2>
+  <div class="grid">
+    <div>대상자 ID</div><div>측정일</div><div>키 (m)</div><div>체중 (kg)</div>
+    <div>성별 M / F</div><div>측정자(고니오미터)</div><div>기록자</div><div>고니오미터 종류·팔 길이</div>
+    <div>PhysioCap 세션 ID</div><div>시행 이름</div><div>녹화 시작 시각</div><div>실내 온도·특이사항</div>
+  </div>
+
+  <h2>B. 측정값 (측정자는 PhysioCap 화면을 보지 않음)</h2>
+  <table>
+    <tr><th style="width:24%">관절 (CSV coordinate)</th><th>회차</th><th>고니오미터 값 (°)</th><th>유지 시작 신호 시각*</th><th>비고 (자세 흔들림 등)</th></tr>
+    <tr><td rowspan="3"><b>무릎 굴곡 R</b><br><span class="muted">knee_angle_r</span></td><td class="num">1</td><td class="blank"></td><td></td><td></td></tr>
+    <tr><td class="num">2</td><td class="blank"></td><td></td><td></td></tr>
+    <tr><td class="num">3</td><td class="blank"></td><td></td><td></td></tr>
+    <tr><td rowspan="3"><b>고관절 굴곡 R</b><br><span class="muted">hip_flexion_r</span></td><td class="num">1</td><td class="blank"></td><td></td><td></td></tr>
+    <tr><td class="num">2</td><td class="blank"></td><td></td><td></td></tr>
+    <tr><td class="num">3</td><td class="blank"></td><td></td><td></td></tr>
+    <tr><td rowspan="3"><b>발목 배측굴곡 R</b><br><span class="muted">ankle_angle_r · 중립 0°, 배측굴곡 +</span></td><td class="num">1</td><td class="blank"></td><td></td><td></td></tr>
+    <tr><td class="num">2</td><td class="blank"></td><td></td><td></td></tr>
+    <tr><td class="num">3</td><td class="blank"></td><td></td><td></td></tr>
+  </table>
+  <p class="muted" style="font-size:8.5pt">* 기록자가 스톱워치나 녹화 경과 시간으로 대략 적습니다. 정확한 분석 구간(t_start·t_end)은 나중에 분석자가 관절각 그래프의 평탄 구간을 보고 정합니다.</p>
+
+  <h2>C. 확인</h2>
+  <p class="check"><span class="box"></span>측정자는 측정 중 PhysioCap 결과를 보지 않았다(눈가림)</p>
+  <p class="check"><span class="box"></span>두 폰 모두 대상자 전신이 화면에 들어왔다 · 고니오미터와 측정자 손이 오른쪽 다리를 가리지 않도록 서는 위치를 확인했다</p>
+  <p class="check"><span class="box"></span>발목 값은 중립 0° 기준으로 바꿔 적었다(아래 2쪽 표 참고)</p>
+  <p class="check">측정자 서명 ____________________ &nbsp;&nbsp; 기록자 서명 ____________________</p>
+
+  <h2>D. 분석자 기입란 (측정 후)</h2>
+  <table>
+    <tr><th>관절</th><th>회차 1 구간 (t_start–t_end, 초)</th><th>회차 2 구간</th><th>회차 3 구간</th></tr>
+    <tr><td>knee_angle_r</td><td class="blank"></td><td></td><td></td></tr>
+    <tr><td>hip_flexion_r</td><td class="blank"></td><td></td><td></td></tr>
+    <tr><td>ankle_angle_r</td><td class="blank"></td><td></td><td></td></tr>
+  </table>
+</section>
+
+<!-- 2쪽: 측정 지침 -->
+<section class="page">
+  <h1>측정 지침</h1>
+  <p class="sub">예비 연구 목적: 차이의 표준편차(SD)를 추정해 본 연구의 표본 수를 정하고(VALIDATION.md 8절), 절차상의 문제를 찾는 것입니다. 권장 인원은 5–10명입니다.</p>
+
+  <h2>1. 순서</h2>
+  <ol>
+    <li>PhysioCap 랩 세션을 만들고 보정 → 중립 자세 시행을 마칩니다.</li>
+    <li>동작 시행 <code>squat_hold</code>로 녹화를 시작합니다. 한 번의 녹화 안에서 9번 유지합니다(관절 3개 × 3회).</li>
+    <li>시작할 때 박수 1회. 대상자는 편한 깊이로 스쿼트해 최저점에서 <b>5초 유지</b>하고, 측정자는 그동안 고니오미터를 대고 읽습니다. 기록자가 "유지 시작" 신호 시각을 적습니다.</li>
+    <li>일어서서 10초 쉬고 다음 유지로 넘어갑니다. 관절 순서는 무릎 → 고관절 → 발목으로 하고, 이를 3번 반복합니다.</li>
+    <li>9번이 끝나면 녹화를 정지합니다. 처리가 끝나면 분석자가 D란에 구간을 적고 CSV로 옮깁니다.</li>
+  </ol>
+
+  <h2>2. 고니오미터 정렬 (오른쪽, 선 자세 스쿼트 유지)</h2>
+  <table>
+    <tr><th>관절</th><th>축</th><th>고정 팔</th><th>이동 팔</th><th>기록 방법</th></tr>
+    <tr><td>무릎 굴곡</td><td>대퇴골 가쪽위관절융기</td><td>큰돌기 방향 대퇴 가쪽 중심선</td><td>가쪽 복사뼈 방향 종아리 가쪽 중심선</td><td>완전 신전 0°, 굴곡 +</td></tr>
+    <tr><td>고관절 굴곡</td><td>큰돌기</td><td>골반 가쪽 중심선</td><td>가쪽위관절융기 방향 대퇴 가쪽 중심선</td><td>중립 0°, 굴곡 +</td></tr>
+    <tr><td>발목 배측굴곡</td><td>가쪽 복사뼈</td><td>종아리뼈머리 방향 종아리 가쪽 중심선</td><td>다섯째 발허리뼈와 평행</td><td>눈금이 90°인 상태가 중립이면 <b>읽은 값 − 90</b>을 적음(배측굴곡 +)</td></tr>
+  </table>
+  <div class="note">
+    <b>정의 차이 주의.</b> PhysioCap(OpenSim)의 고관절 굴곡은 골반에 대한 대퇴의 각도입니다. 스쿼트에서는 골반이 앞으로 기울므로, 고정 팔을 골반이 아닌 몸통에 맞추면 요추 굴곡이 섞여 값이 달라집니다. 반드시 골반 가쪽 중심선(위앞엉덩뼈가시–위뒤엉덩뼈가시 사이 가쪽)에 맞추세요. 발목은 0° 기준을 바꿔 적지 않으면 약 90°의 편향이 생깁니다.
+  </div>
+
+  <h2>3. CSV로 옮기기</h2>
+  <ul>
+    <li>양식: <code>goniometer_record.csv</code>. 회차마다 한 행(대상자 1명 = 9행)입니다. 작성 예시는 <code>pilot_goniometer_example.csv</code>를 보세요(<b>가상값이며 실제 측정이 아닙니다</b>).</li>
+    <li><code>mode</code>는 <code>mean</code>, <code>t_start</code>·<code>t_end</code>는 D란의 구간입니다. <code>test_value</code>는 비워 두면 서버가 그 구간의 PhysioCap 평균값을 계산합니다.</li>
+    <li>서버는 같은 대상자의 3회를 평균해 대상자당 한 쌍으로 분석합니다. 반복 측정을 서로 다른 사람처럼 세면 n과 ICC가 부풀려지기 때문입니다.</li>
+    <li>예비 연구 결과에서 확인할 것: 관절별 차이의 SD(표본 수 계산용), 편향의 방향과 크기, 측정이 불가능했거나 화면에서 가려진 회차의 비율.</li>
+  </ul>
+</section>
+
+</body>
+</html>

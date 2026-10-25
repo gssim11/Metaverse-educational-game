@@ -147,3 +147,18 @@ def test_requeue_orphans(tmp_path):
     again = st.claim_job(root, {"core"})
     assert again["id"] == a["id"] and again["requeued"] == 1
     assert json.loads((root / "jobs" / "running" / f"{a['id']}.json").read_text())["state"] == "running"
+
+
+def test_pilot_example_sheet_averages_repeats(env):  # noqa: F811
+    from pathlib import Path
+    _, c, _ = env
+    p = Path(__file__).resolve().parent.parent / "dashboard" / "templates" / "pilot_goniometer_example.csv"
+    r = c.post("/api/validation/discrete", data={"activity": "squats"}, files={"sheet": (p.name, p.read_bytes(), "text/csv")})
+    assert r.status_code == 200, r.text
+    groups = r.json()["result"]["groups"]
+    assert set(groups) == {"knee_angle_r|mean", "hip_flexion_r|mean", "ankle_angle_r|mean"}
+    for g in groups.values():
+        assert g["n"] == 8  # 8명 × 3회 → 대상자당 한 쌍
+        assert all(pt["repeats"] == 3 for pt in g["points"])
+    rows = [x for x in V.average_repeats([{"subject": "A", "test": 1, "ref": 2}, {"subject": "A", "test": 3, "ref": 4}, {"subject": "", "test": 5, "ref": 5}])]
+    assert rows[0] == {"label": "A", "test": 2.0, "ref": 3.0, "repeats": 2} and len(rows) == 2

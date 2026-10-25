@@ -623,11 +623,10 @@ def validation_discrete(sheet: UploadFile = File(...), label: str = Form(""), ac
             raise
         except (KeyError, ValueError, TypeError) as e:
             raise HTTPException(400, f"{i}행을 읽을 수 없습니다: {e}")
-        groups.setdefault(f"{coord}|{mode}", []).append(
-            {"label": r.get("subject", "") + (" " + r.get("trial", "") if r.get("trial") else ""), "test": tv, "ref": ref_v})
+        groups.setdefault(f"{coord}|{mode}", []).append({"subject": r.get("subject", ""), "test": tv, "ref": ref_v})
     res = {}
     for g, items in groups.items():
-        res[g] = VAL.compare_discrete(items)
+        res[g] = VAL.compare_discrete(VAL.average_repeats(items))
         res[g]["unit"] = "deg"
     return _save_validation({"kind": "discrete", "source": "kinematics", "activity": activity, "label": label,
                              "reference": sheet.filename, "result": {"groups": res}})

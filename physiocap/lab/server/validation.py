@@ -204,13 +204,29 @@ def interpret_icc(lo: float, hi: float) -> str:
     return a if a == b else f"{a}~{b}"
 
 
+def average_repeats(rows: list[dict]) -> list[dict]:
+    """같은 대상자의 반복 측정을 평균해 대상자당 한 쌍으로 만든다.
+
+    반복 측정을 서로 다른 사람처럼 세면 n 과 ICC 가 부풀려진다. subject 가 빈 행은 각각 독립으로 둔다.
+    """
+    out: dict[str, dict] = {}
+    for i, r in enumerate(rows):
+        key = r.get("subject") or f"_row{i}"
+        o = out.setdefault(key, {"label": r.get("subject", ""), "t": [], "r": []})
+        o["t"].append(float(r["test"]))
+        o["r"].append(float(r["ref"]))
+    return [{"label": o["label"], "test": float(np.mean(o["t"])), "ref": float(np.mean(o["r"])), "repeats": len(o["t"])}
+            for o in out.values()]
+
+
 def compare_discrete(rows: list[dict]) -> dict:
     """rows: [{"label":…, "test":…, "ref":…}] (같은 측정 항목끼리 묶어서 호출)."""
     t = np.array([r["test"] for r in rows], float)
     ref = np.array([r["ref"] for r in rows], float)
     res = agreement(t - ref, t, ref)
     res["icc"] = icc(t.tolist(), ref.tolist())
-    res["points"] = [{"label": r.get("label", ""), "test": float(a), "ref": float(b)} for r, a, b in zip(rows, t, ref)]
+    res["points"] = [{"label": r.get("label", ""), "test": float(a), "ref": float(b), "repeats": r.get("repeats", 1)}
+                     for r, a, b in zip(rows, t, ref)]
     return res
 
 

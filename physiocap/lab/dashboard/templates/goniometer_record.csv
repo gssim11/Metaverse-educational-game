@@ -1,2 +1,2 @@
-subject,session,trial,coordinate,mode,t_start,t_end,reference_deg,test_value,note
-P01,,,knee_angle_r,max,,,,,
+subject,session,trial,coordinate,mode,repeat,t_start,t_end,reference_deg,test_value,note
+P01,,,knee_angle_r,mean,1,,,,,
