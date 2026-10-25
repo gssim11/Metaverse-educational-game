@@ -54,6 +54,29 @@ docker compose run --rm core python3.8 /workspace/physiocap/selftest.py
 
 학과 PC에서도 동역학은 CPU로 계산하므로, 시행 하나에 수십 분이 걸린다고 보세요.
 
+### GPU 없는 노트북에서 돌리기 (CPU 모드)
+
+NVIDIA GPU가 없는 PC(예: Intel 내장 그래픽만 있는 노트북)에서는 `docker-compose.cpu.yml`을 씁니다. 포즈 인식이 OpenCap 원래 루프 대신 `mmpose_cpu/loop_mmpose_cpu.py`로 돌아가며, 모델(Faster R-CNN + HRNet-w48)과 임계값은 같고 계산 장치만 CPU입니다. 나머지 단계는 GPU 구성과 같습니다. 대신 느립니다.
+
+Windows 노트북 준비(처음 한 번):
+
+1. 관리자 PowerShell에서 `wsl --install` 실행 후 재부팅
+2. Docker Desktop 설치(WSL2 사용 설정), 실행해 두기
+3. 디스크 여유 60GB 이상(이미지가 크고, 포즈 인식 이미지만 압축 상태로 8.5GB)
+
+설치와 실행(PowerShell):
+
+```powershell
+cd $env:USERPROFILE\Documents\Cowork\PhysioCap\physiocap\lab
+docker compose -f docker-compose.cpu.yml up -d --build      # 처음 빌드는 1시간 이상
+docker compose -f docker-compose.cpu.yml run --rm mmpose python /mmpose/benchmark_pose.py   # 이 PC의 포즈 인식 속도
+docker compose -f docker-compose.cpu.yml run --rm core python3.8 /workspace/physiocap/selftest.py   # 자가 검증
+```
+
+속도 시험은 OpenCap 공식 시험 영상 앞 60프레임을 처리하고, 프레임당 시간과 시행 길이별 예상 처리 시간(카메라 2대)을 보여 줍니다. 결과가 느리면 시행을 짧게 나눠 찍으세요(예: 스쿼트 유지 한 번 = 한 시행). 동역학은 GPU 구성에서도 CPU로 계산하므로 시행당 수십 분 걸립니다.
+
+GPU 구성과 CPU 구성은 같은 데이터 볼륨을 쓰므로, 나중에 GPU PC로 옮길 때는 `docker compose -f docker-compose.cpu.yml down` 후 GPU 구성으로 다시 올리면 됩니다.
+
 브라우저에서 `http://localhost:8000` 을 엽니다. 폰은 `http://<PC 내부 IP>:8000` 으로 접속하므로 PC 방화벽에서 8000번 포트를 허용하세요.
 
 ## 사용 순서
