@@ -7,7 +7,9 @@ WORKDIR /app
 COPY server/requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 COPY server/ /app/
+# 3D 뷰어용 OpenSim 뼈 메시(opensim-models/Geometry). 실패해도 빌드 계속(선 골격으로 대체)
+RUN python fetch_geometry.py /opt/opensim-geometry || true
 COPY dashboard/ /dashboard/
-ENV PHYSIOCAP_DATA=/data/physiocap PHYSIOCAP_DASHBOARD=/dashboard
+ENV PHYSIOCAP_DATA=/data/physiocap PHYSIOCAP_DASHBOARD=/dashboard PHYSIOCAP_GEOMETRY=/opt/opensim-geometry
 EXPOSE 8000
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]

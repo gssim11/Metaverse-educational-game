@@ -110,6 +110,20 @@
     <div class="card" id="resultView" hidden>
       <h2 id="rvTitle"></h2>
       <div id="rvNotes"></div>
+      <div id="v3dBox" hidden>
+        <h3>3D 재생 <small class="muted">OpenSim 근골격 모델 · 드래그 회전 / 휠 확대 · 그래프를 누르면 그 시점으로 이동</small></h3>
+        <div id="viewer3d" class="viewer3d"></div>
+        <div class="row">
+          <button id="v3Play" class="primary">▶ 재생</button>
+          <input id="v3Slider" type="range" min="0" max="0" value="0" class="grow">
+          <span id="v3Time" class="muted">0.00 s</span>
+          <select id="v3Speed"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option></select>
+          <button data-view="front">정면</button><button data-view="side">측면</button><button data-view="top">위</button>
+          <label class="inline"><input type="checkbox" id="v3Follow"> 따라가기</label>
+          <label class="inline"><input type="checkbox" id="v3Lines"> 골격선</label>
+        </div>
+        <p id="v3Info" class="muted"></p>
+      </div>
       <h3>관절각 (OpenSim 역기구학)</h3>
       <div id="kinChips" class="chips"></div>
       <canvas id="kinChart" class="chart"></canvas>
@@ -125,6 +139,8 @@
     </div>
   </section>
 </main>
+<script type="importmap">{"imports": {"three": "./vendor/three/three.module.min.js", "three/addons/": "./vendor/three/addons/"}}</script>
+<script type="module" src="viewer.js"></script>
 <script src="vendor/qrcode.js"></script>
 <script src="app.js"></script>
 </body>

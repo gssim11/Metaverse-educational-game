@@ -42,3 +42,7 @@ button:disabled { opacity: .45; cursor: default; }
 .imgs { display: flex; flex-wrap: wrap; gap: 8px; } .imgs img { max-width: 320px; border-radius: 8px; border: 1px solid var(--line); }
 .files { columns: 2; font-size: 12px; } .files a { color: var(--accent); }
 code { background: var(--bg); padding: 1px 5px; border-radius: 4px; }
+.viewer3d { width: 100%; height: 460px; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.viewer3d canvas { display: block; width: 100%; height: 100%; }
+.grow { flex: 1; min-width: 160px; }
+label.inline { flex-direction: row; align-items: center; gap: 4px; }

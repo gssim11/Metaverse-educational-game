@@ -153,6 +153,8 @@ async function openResult(tid) {
   if (r.kinetics?.note) notes.push(r.kinetics.note);
   notes.push('관절각은 OpenCap 원본 파이프라인(삼각측량 → LSTM 마커 보강 → OpenSim 역기구학) 결과입니다. 갤럭시 렌즈 보정값은 이 서버에서 계산한 값입니다.');
   $('#rvNotes').innerHTML = notes.map((n) => `<div class="note">${esc(n)}</div>`).join('');
+  // 3D 재생
+  await show3D(s.id, tid, r);
   // 관절각
   if (r.kinematics) {
     const cols = r.kinematics.columns, data = r.kinematics.data;
@@ -183,12 +185,59 @@ async function openResult(tid) {
   $('#resultView').scrollIntoView({ behavior: 'smooth' });
 }
 
+// ---------- 3D 뷰어 ----------
+let viewer = null, cursorT = null, lastCursorDraw = 0, cursorTimer = 0;
+const chartRedraws = {};
+const viewerReady = () => new Promise((res) => (window.PhysioViewer ? res() : window.addEventListener('physioviewer-ready', res, { once: true })));
+
+async function show3D(sid, tid, r) {
+  $('#v3dBox').hidden = !r.has_visualizer;
+  if (!r.has_visualizer) return;
+  await viewerReady();
+  if (!viewer) {
+    viewer = new window.PhysioViewer.Viewer($('#viewer3d'), {
+      onTime: (t, i) => {
+        $('#v3Slider').value = i;
+        $('#v3Time').textContent = t.toFixed(2) + ' s';
+        cursorT = t;
+        // 그래프 커서: 최대 12fps 로 다시 그리되, 마지막 위치는 반드시 반영
+        clearTimeout(cursorTimer);
+        const now = performance.now();
+        if (now - lastCursorDraw > 80) { lastCursorDraw = now; Object.values(chartRedraws).forEach((f) => f()); }
+        else cursorTimer = setTimeout(() => { lastCursorDraw = performance.now(); Object.values(chartRedraws).forEach((f) => f()); }, 90);
+      },
+    });
+    $('#v3Play').onclick = () => { $('#v3Play').textContent = viewer.play() ? '❚❚ 정지' : '▶ 재생'; };
+    $('#v3Slider').oninput = (e) => viewer.setFrame(+e.target.value);
+    $('#v3Speed').onchange = (e) => (viewer.speed = +e.target.value);
+    document.querySelectorAll('[data-view]').forEach((b) => (b.onclick = () => viewer.frameView(b.dataset.view)));
+    $('#v3Follow').onchange = (e) => (viewer.follow = e.target.checked);
+    $('#v3Lines').onchange = (e) => { viewer.lines.visible = viewer.joints.visible = e.target.checked; };
+  }
+  viewer.play(false);
+  $('#v3Play').textContent = '▶ 재생';
+  $('#v3Info').textContent = '3D 데이터 불러오는 중…';
+  const vis = await api(`/api/sessions/${sid}/trials/${tid}/visualizer`);
+  const info = await viewer.load(vis, r.kinetics || null);
+  $('#v3Slider').max = vis.time.length - 1;
+  $('#v3Lines').checked = viewer.lines.visible;
+  const forces = viewer.forces.length ? ` · 지면반력 화살표 ${viewer.forces.length}개(분홍=오른발, 하늘=왼발, 길이 1 m = 체중 1배)` : '';
+  $('#v3Info').textContent = (info.meshCount ? `뼈 메시 ${info.meshCount}개` : '뼈 메시를 찾지 못해 선 골격으로 표시') + (info.missing ? ` (누락 ${info.missing})` : '') + ` · ${vis.time.length} 프레임` + forces;
+}
+
 function chipChart(chipSel, canvasSel, t, series, active, unit) {
   const on = new Set(active);
   const box = $(chipSel);
   const names = Object.keys(series);
   box.innerHTML = names.map((n, i) => `<span class="chip ${on.has(n) ? 'on' : ''}" style="color:${PALETTE[i % PALETTE.length]}" data-n="${esc(n)}">${esc(n)}</span>`).join('');
   const draw = () => drawChart($(canvasSel), t, names.map((n, i) => ({ y: series[n], color: PALETTE[i % PALETTE.length], on: on.has(n) })).filter((s) => s.on), unit);
+  chartRedraws[canvasSel] = draw;
+  $(canvasSel).onclick = (ev) => {
+    if (!viewer || !t.length) return;
+    const rect = ev.target.getBoundingClientRect();
+    const f = (ev.clientX - rect.left - 48) / (rect.width - 60);
+    viewer.seekTime(t[0] + Math.max(0, Math.min(1, f)) * (t[t.length - 1] - t[0]));
+  };
   box.querySelectorAll('.chip').forEach((c) => c.onclick = () => { on.has(c.dataset.n) ? on.delete(c.dataset.n) : on.add(c.dataset.n); c.classList.toggle('on'); draw(); });
   draw();
 }
@@ -211,6 +260,10 @@ function drawChart(c, t, series, unit) {
   for (let i = 0; i <= 4; i++) { const v = lo + (i / 4) * (hi - lo); g.beginPath(); g.moveTo(L, Y(v)); g.lineTo(L + w, Y(v)); g.stroke(); g.fillText(v.toFixed(Math.abs(hi - lo) < 5 ? 2 : 0), 4, Y(v) + 4); }
   for (let i = 0; i <= 5; i++) { const x = t0 + (i / 5) * (t1 - t0); g.fillText(x.toFixed(2) + 's', X(x) - 14, H - 8); }
   g.fillText(unit || '', 4, 10);
+  if (cursorT != null && cursorT >= t0 && cursorT <= t1) {
+    g.strokeStyle = css.getPropertyValue('--text'); g.lineWidth = 1;
+    g.beginPath(); g.moveTo(X(cursorT), T); g.lineTo(X(cursorT), T + h); g.stroke();
+  }
   for (const s of series) {
     g.strokeStyle = s.color; g.lineWidth = 2; g.beginPath();
     let pen = false;

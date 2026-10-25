@@ -18,10 +18,12 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 import layout as L
+import meshes as M
 import video as V
 from store import Store, now_ms
 
 DATA = Path(os.environ.get("PHYSIOCAP_DATA", "/data/physiocap"))
+GEOMETRY = Path(os.environ.get("PHYSIOCAP_GEOMETRY", "/opt/opensim-geometry"))
 DASHBOARD = Path(os.environ.get("PHYSIOCAP_DASHBOARD", Path(__file__).resolve().parent.parent / "dashboard"))
 ONLINE_MS = 6000          # 마지막 폴링 후 이 시간 안이면 접속 중
 START_DELAY_MS = 1500     # 녹화 명령 후 동시 시작까지 여유
@@ -408,6 +410,7 @@ def results(sid: str, tid: str):
     mot = L.kinematics_mot(DATA, sid, tid)
     if mot.exists():
         out["kinematics"] = L.read_mot(mot)
+    out["has_visualizer"] = _visualizer_path(sid, tid) is not None
     dyn = L.dynamics_dir(DATA, sid, tid) / "physiocap_summary.json"
     if dyn.exists():
         out["kinetics"] = _read(dyn)
@@ -415,6 +418,30 @@ def results(sid: str, tid: str):
         if p.is_file() and p.suffix.lower() in (".mot", ".trc", ".osim", ".json", ".jpg", ".png", ".csv", ".yaml", ".npy", ".sto") and (tid in p.parts or tid in p.stem or p.parent.name in ("Model", "CalibrationImages")):
             out["files"].append(str(p.relative_to(DATA)))
     return out
+
+
+def _visualizer_path(sid: str, tid: str) -> Path | None:
+    p = L.session_dir(DATA, sid) / "VisualizerJsons" / tid / f"{tid}.json"
+    return p if p.exists() else None
+
+
+@app.get("/api/sessions/{sid}/trials/{tid}/visualizer")
+def visualizer(sid: str, tid: str):
+    """OpenCap 이 만든 3D 재생 데이터(분절별 위치·회전, 붙은 메시 이름, 축척)."""
+    get_session(sid)
+    p = _visualizer_path(sid, tid)
+    if not p:
+        raise HTTPException(404, "3D 재생 데이터가 없습니다.")
+    return FileResponse(p, media_type="application/json")
+
+
+@app.get("/api/geometry/{name}")
+def geometry(name: str):
+    """OpenSim 뼈 메시(.vtp) → {positions, indices}. 없으면 404 (뷰어는 선 골격으로 대체)."""
+    m = M.mesh_json(GEOMETRY, DATA / "geometry_cache", name)
+    if m is None:
+        raise HTTPException(404, "mesh not available")
+    return JSONResponse(m, headers={"Cache-Control": "public, max-age=604800"})
 
 
 def _read(p: Path):

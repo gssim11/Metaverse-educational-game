@@ -26,6 +26,7 @@ from store import claim_job, finish_job, update_running  # noqa: E402
 SERIES = [
     ("GRF_BW", "GRF_labels", "% 체중"),
     ("GRF", "GRF_labels", "N"),
+    ("COP", "COP_labels", "m"),  # 압력중심(지면 좌표) — 3D 뷰어의 지면반력 화살표 위치
     ("torques_BWht", "torque_labels", "% 체중×키"),
     ("torques", "torque_labels", "Nm"),
     ("muscle_activations", "muscles", "0–1"),
