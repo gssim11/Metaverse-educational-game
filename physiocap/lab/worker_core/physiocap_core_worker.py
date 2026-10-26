@@ -19,6 +19,7 @@ DATA = Path(os.environ.get("PHYSIOCAP_DATA", "/data/physiocap"))
 sys.path.insert(0, str(OPENCAP_DIR))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import keypoint_mode as KM  # noqa: E402
 import layout as L  # noqa: E402
 from store import claim_job, finish_job, requeue_orphans, update_running  # noqa: E402
 
@@ -76,12 +77,23 @@ def list_outputs(session: str, trial: str) -> dict:
 
 
 def run_core(job: dict) -> dict:
+    method = job.get("kinematics_method", KM.AUGMENTER)
+    KM.check_supported(method, job.get("opensim_model", "LaiUhlrich2022"))
+    if method == KM.AUGMENTER or job["trial_type"] == "calibration":
+        return _run_core(job)
+    import main as opencap_main
+    with KM.keypoint_pipeline(opencap_main, str(OPENCAP_DIR / "opensimPipeline")):
+        return _run_core(job)
+
+
+def _run_core(job: dict) -> dict:
     from main import main
 
     sid, tid, ttype = job["session"], job["trial"], job["trial_type"]
     ps = pose_settings(job.get("pose_detector", "hrnet"))
     common = dict(isDocker=True, imageUpsampleFactor=4, genericFolderNames=True, cameras_to_use=["all"], dataDir=str(DATA))
-    update_running(DATA, job, stage=f"{ttype}: OpenCap 처리 중")
+    label = "B 방식(키포인트 IK)" if job.get("kinematics_method") == KM.KEYPOINTS else "OpenCap"
+    update_running(DATA, job, stage=f"{ttype}: {label} 처리 중")
     if ttype == "calibration":
         delete_calibration_files(sid)
         main(sid, L.CALIBRATION, L.CALIBRATION, extrinsicsTrial=True, **common)

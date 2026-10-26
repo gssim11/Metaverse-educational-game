@@ -130,6 +130,7 @@
           <label>칸 (mm) <input id="sSquare" type="number" value="35"></label>
           <label>체커보드 위치 <select id="sPlace"><option value="backWall">세워 둠(정면 벽/의자)</option><option value="ground">바닥에 눕힘</option></select></label>
           <label>포즈 인식 <select id="sPose"><option value="hrnet">HRNet (OpenCap 기본)</option><option value="openpose">OpenPose</option></select></label>
+          <label>관절각 계산 <select id="sMethod"><option value="augmenter">OpenCap 기본 (LSTM 마커 증강)</option><option value="keypoints">B 방식 (키포인트 직접 역기구학)</option></select></label>
         </div>
         <button id="sCreate" class="primary">세션 만들기</button>
         <h3>세션 목록</h3>

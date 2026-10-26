@@ -25,6 +25,11 @@ Files derived from opencap-core (Apache License 2.0), modified by PhysioCap cont
   - mmpose_cpu/benchmark_pose.py — new timing script that calls opencap-core's
     detection_inference and pose_inference on a clip of OpenCap's public test video
     (downloaded at run time from stanfordnmbl/opencap-test-data; not redistributed here).
+  - worker_core/keypoint_mode.py — new code for the optional "keypoints" kinematics method. At run
+    time it writes an IK setup file that is opencap-core's opensimPipeline/IK/Setup_IK_mmpose.xml
+    with added IKCoordinateTask entries (weak regularization toward 0 deg), and it uses
+    opencap-core's Setup_scaling_LaiUhlrich2022_mmpose.xml and LaiUhlrich2022_markers_mmpose.xml
+    unchanged. opencap-core itself is not modified.
 
 Third-party software inside the Docker images (built from upstream sources at install time,
 not stored in this repository). Anyone who redistributes the built images must follow

@@ -80,7 +80,7 @@ function renderSession() {
   const s = state.session;
   $('#sessionView').hidden = !s;
   if (!s) return;
-  $('#svTitle').textContent = s.name;
+  $('#svTitle').textContent = s.name + (s.kinematics_method === 'keypoints' ? ' · B 방식(키포인트 IK)' : '');
   $('#svSub').textContent = `키 ${s.subject.height_m} m · 체중 ${s.subject.mass_kg} kg · ` + Object.entries(s.cameras).map(([c, v]) => `${c}=${v.label}`).join(', ') + ` · 체커보드 ${s.checkerboard.cols}×${s.checkerboard.rows} ${s.checkerboard.square_mm}mm (${s.checkerboard.placement})`;
   const rec = s.trials.find((t) => t.state === 'recording');
   $('#stopBtn').hidden = !rec;
@@ -108,6 +108,7 @@ $('#sCreate').onclick = async () => {
       checkerboard: { cols: +$('#sCols').value, rows: +$('#sRows').value, square_mm: +$('#sSquare').value, placement: $('#sPlace').value },
       cameras: { Cam0: $('#sCam0').value, Cam1: $('#sCam1').value },
       pose_detector: $('#sPose').value,
+      kinematics_method: $('#sMethod').value,
     };
     if (body.cameras.Cam0 === body.cameras.Cam1) throw new Error('Cam0 과 Cam1 에 서로 다른 폰을 지정하세요.');
     state.session = await api('/api/sessions', { method: 'POST', body });

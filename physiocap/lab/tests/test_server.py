@@ -194,3 +194,27 @@ def test_activity_enqueued_before_kinetics(env, tmp_path):
     # 수동 실행: 운동학 없으면 거부
     assert c.post(f"/api/sessions/{s['id']}/trials/walk1/activity", json={"analysis": "sts"}).status_code == 409
     assert c.post(f"/api/sessions/{s['id']}/trials/walk1/activity", json={"analysis": "bad"}).status_code == 400
+
+
+def test_kinematics_method_option(env, tmp_path):
+    """B 방식(키포인트 IK)은 세션 단위 옵션: 저장되고, core 작업에 실려 워커로 전달된다."""
+    appmod, c, _ = env
+    register(c, "a"); register(c, "b")
+    base = {"subject": {"height_m": 1.7, "mass_kg": 65}, "cameras": {"Cam0": "a", "Cam1": "b"}}
+    assert c.post("/api/sessions", json=base).json()["kinematics_method"] == "augmenter"  # 기본은 OpenCap 그대로
+    assert c.post("/api/sessions", json={**base, "kinematics_method": "bogus"}).status_code == 400
+    assert c.post("/api/sessions", json={**base, "kinematics_method": "keypoints",
+                                         "opensim_model": "LaiUhlrich2022_shoulder"}).status_code == 400
+    s = c.post("/api/sessions", json={**base, "kinematics_method": "keypoints"}).json()
+    model = appmod.L.camera_model_key("SM-S921N", 720, 1280, 60)
+    d = appmod.DATA / "intrinsics" / model / "Deployed"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "cameraIntrinsics.pickle").write_bytes(b"x")
+    t = c.post(f"/api/sessions/{s['id']}/trials", json={"type": "calibration"}).json()
+    c.post(f"/api/sessions/{s['id']}/trials/{t['id']}/stop")
+    v = make_video(tmp_path / "v.mp4")
+    for did, cam in (("a", "Cam0"), ("b", "Cam1")):
+        upload(c, did, v, session=s["id"], trial=t["id"], cam=cam, start_device_ms=0, fps=60)
+    import store as st
+    job = st.claim_job(appmod.DATA, {"core"})
+    assert job["kinematics_method"] == "keypoints" and job["opensim_model"] == "LaiUhlrich2022"

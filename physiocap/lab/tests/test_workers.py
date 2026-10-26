@@ -203,3 +203,86 @@ def test_activity_requires_augmented_trc(tmp_path, monkeypatch):
     k, data = _kin_worker(tmp_path, monkeypatch, {})
     with pytest.raises(RuntimeError, match="마커"):
         k.run_activity({"id": "a", "session": "S1", "trial": "nope", "analysis": "gait"})
+
+
+def _fake_opencap_main(calls, data):
+    """main.py 처럼 모듈 전역의 augmentTRC/getScaleTimeRange/runScaleTool/runIKTool 을 호출 시점에 찾는 가짜."""
+    mod = types.ModuleType("main")
+    mod.augmentTRC = lambda *a, **k: calls.append(("orig_aug",)) or 0.0
+    mod.getScaleTimeRange = lambda p, **k: calls.append(("orig_range", k)) or [0, 1]
+    mod.runScaleTool = lambda setup, *a, **k: calls.append(("orig_scale", setup)) or "m.osim"
+    mod.runIKTool = lambda setup, *a, **k: calls.append(("orig_ik", setup, open(setup).read() if Path(setup).exists() else "")) or ("x.mot", "m.osim")
+
+    def main(session, trialName, trial_id, **kw):
+        sd = data / "Data" / session
+        mod.augmentTRC("pre.trc", 65, 1.7, "post.trc", "aug")
+        if kw.get("scaleModel"):
+            mod.getScaleTimeRange("post.trc", thresholdPosition=0.003, thresholdTime=0.1, removeRoot=True)
+            mod.runScaleTool("Setup_scaling_LaiUhlrich2022.xml", "LaiUhlrich2022.osim", 65, "post.trc", [0, 1], str(sd))
+            (sd / "OpenSimData" / "Model").mkdir(parents=True, exist_ok=True)
+            (sd / "OpenSimData" / "Model" / "LaiUhlrich2022_scaled.osim").write_text("<osim/>")
+        else:
+            out = sd / "OpenSimData" / "Kinematics"
+            mod.runIKTool("Setup_IK.xml", "m.osim", "post.trc", str(out))
+            out.mkdir(parents=True, exist_ok=True)
+            (out / f"{trial_id}.mot").write_text("endheader\ntime\n0\n")
+    mod.main = main
+    return mod
+
+
+def test_keypoint_mode_swaps_and_restores(core, monkeypatch):
+    w, _, data = core
+    calls = []
+    mod = _fake_opencap_main(calls, data)
+    monkeypatch.setitem(sys.modules, "main", mod)
+    monkeypatch.setitem(sys.modules, "utilsDataman", types.SimpleNamespace())
+    import keypoint_mode as KM
+    monkeypatch.setattr(KM, "passthrough_trc", lambda *a, **k: calls.append(("pass",)) or 0.0)
+    ik_dir = w.OPENCAP_DIR / "opensimPipeline" / "IK"
+    ik_dir.mkdir(parents=True)
+    (ik_dir / "Setup_IK_mmpose.xml").write_text("<OpenSimDocument><IKTaskSet><objects><IKMarkerTask name=\"RHip\"/></objects></IKTaskSet></OpenSimDocument>")
+    orig = {n: getattr(mod, n) for n in ("augmentTRC", "getScaleTimeRange", "runScaleTool", "runIKTool")}
+
+    w.run_core({"id": "n", "session": "K", "trial": "neutral", "trial_type": "neutral", "kinematics_method": "keypoints"})
+    assert calls[0] == ("pass",)  # LSTM 증강 대신 그대로 복사
+    assert calls[1][0] == "orig_range" and calls[1][1]["withOpenPoseMarkers"] is True
+    assert calls[2] == ("orig_scale", str(w.OPENCAP_DIR / "opensimPipeline" / "Scaling" / "Setup_scaling_LaiUhlrich2022_mmpose.xml"))
+    calls.clear()
+    w.run_core({"id": "d", "session": "K", "trial": "walk", "trial_type": "dynamic", "kinematics_method": "keypoints"})
+    tag, setup, xml = calls[1]
+    assert tag == "orig_ik" and setup.endswith("Setup_IK_keypoints_generic.xml")
+    assert 'IKMarkerTask name="RHip"' in xml and xml.count("<IKCoordinateTask") == len(KM.REGULARIZATION)
+    assert '<IKCoordinateTask name="lumbar_extension"><apply>true</apply><weight>0.001</weight>' in xml
+    # 끝나면 원래 함수로 복원 → 기본 방식은 OpenCap 그대로
+    assert {n: getattr(mod, n) for n in orig} == orig
+    calls.clear()
+    w.run_core({"id": "d2", "session": "K", "trial": "walk", "trial_type": "dynamic"})
+    assert [c[0] for c in calls] == ["orig_aug", "orig_ik"] and calls[1][1] == "Setup_IK.xml"
+    with pytest.raises(ValueError):
+        w.run_core({"id": "x", "session": "K", "trial": "walk", "trial_type": "dynamic", "kinematics_method": "nope"})
+
+
+def test_passthrough_trc_offsets_like_opencap(tmp_path, monkeypatch):
+    sys.path.insert(0, str(ROOT / "worker_core"))
+    import keypoint_mode as KM
+
+    class FakeTRC:
+        def __init__(self, p):
+            self.marker_names = ["RHeel", "Neck"]
+            self.m = {"RHeel": np.array([[0, 0.05, 0], [0, 0.02, 0]]), "Neck": np.array([[0, 1.5, 0], [0, 1.6, 0]])}
+            self.off = None
+
+        def marker(self, n):
+            return self.m[n]
+
+        def offset(self, axis, v):
+            self.off = (axis, v)
+
+        def write(self, p):
+            Path(p).write_text(repr(self.off))
+
+    monkeypatch.setitem(sys.modules, "utilsDataman", types.SimpleNamespace(TRCFile=FakeTRC))
+    out = tmp_path / "post.trc"
+    assert KM.passthrough_trc("pre.trc", 65, 1.7, str(out), "aug") == pytest.approx(0.02)
+    axis, v = eval(out.read_text())
+    assert axis == "y" and v == pytest.approx(-(0.02 - 0.01))  # 최저점이 바닥 0.01 m 위

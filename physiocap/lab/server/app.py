@@ -57,6 +57,9 @@ class Checkerboard(BaseModel):
     placement: str = "backWall"
 
 
+KINEMATICS_METHODS = ("augmenter", "keypoints")
+
+
 class SessionCreate(BaseModel):
     name: str = ""
     subject: Subject
@@ -64,6 +67,8 @@ class SessionCreate(BaseModel):
     cameras: dict[str, str] = Field(default_factory=dict, description="{'Cam0': device_id, 'Cam1': device_id}")
     pose_detector: str = "hrnet"
     opensim_model: str = "LaiUhlrich2022"
+    # augmenter: OpenCap 기본(LSTM 마커 증강) / keypoints: B 방식(증강 없이 영상 키포인트로 직접 스케일링·역기구학)
+    kinematics_method: str = "augmenter"
 
 
 class TrialStart(BaseModel):
@@ -157,11 +162,16 @@ def create_session(body: SessionCreate):
             raise HTTPException(400, f"{cam}: 등록되지 않은 기기 {did}")
     if body.checkerboard.placement not in ("backWall", "ground"):
         raise HTTPException(400, "체커보드 위치는 backWall(세워 둠) 또는 ground(바닥)")
+    if body.kinematics_method not in KINEMATICS_METHODS:
+        raise HTTPException(400, "관절각 계산 방식은 augmenter(OpenCap 기본) 또는 keypoints(B 방식)")
+    if body.kinematics_method == "keypoints" and "shoulder" in body.opensim_model:
+        raise HTTPException(400, "B 방식(키포인트)은 어깨 모델을 지원하지 않습니다.")
     sid = L.safe_name(body.name or time.strftime("S%Y%m%d_%H%M%S")) + "_" + uuid.uuid4().hex[:4]
     s = {
         "id": sid, "name": body.name or sid, "created": now_ms(),
         "subject": body.subject.model_dump(), "checkerboard": body.checkerboard.model_dump(),
         "pose_detector": body.pose_detector, "opensim_model": body.opensim_model,
+        "kinematics_method": body.kinematics_method,
         "cameras": {cam: {"device_id": did, "label": devs[did].get("label"), "model": _camera_model(devs[did])}
                     for cam, did in sorted(body.cameras.items())},
         "trials": [],
@@ -320,7 +330,9 @@ def prepare_and_enqueue(sid: str, tid: str) -> None:
         meta = L.build_session_metadata(s["subject"], s["checkerboard"], cams, s.get("pose_detector", "hrnet"), s.get("opensim_model", "LaiUhlrich2022"))
         L.write_session_metadata(DATA, sid, meta)
         job = store.enqueue("core", session=sid, trial=tid, trial_type=t["type"], cameras=sorted(cams),
-                            pose_detector=s.get("pose_detector", "hrnet"))
+                            pose_detector=s.get("pose_detector", "hrnet"),
+                            opensim_model=s.get("opensim_model", "LaiUhlrich2022"),
+                            kinematics_method=s.get("kinematics_method", "augmenter"))
 
         def upd(s_):
             tt = _trial(s_, tid)
