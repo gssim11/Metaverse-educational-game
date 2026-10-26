@@ -27,9 +27,17 @@ Files derived from opencap-core (Apache License 2.0), modified by PhysioCap cont
     (downloaded at run time from stanfordnmbl/opencap-test-data; not redistributed here).
   - worker_core/keypoint_mode.py — new code for the optional "keypoints" kinematics method. At run
     time it writes an IK setup file that is opencap-core's opensimPipeline/IK/Setup_IK_mmpose.xml
-    with added IKCoordinateTask entries (weak regularization toward 0 deg), and it uses
-    opencap-core's Setup_scaling_LaiUhlrich2022_mmpose.xml and LaiUhlrich2022_markers_mmpose.xml
-    unchanged. opencap-core itself is not modified.
+    with added IKCoordinateTask entries (weak regularization toward 0 deg). It uses opencap-core's
+    Setup_scaling_LaiUhlrich2022_mmpose.xml unchanged, and a temporary copy of
+    LaiUhlrich2022_markers_mmpose.xml in which only the RHip/LHip/midHip locations are replaced.
+    opencap-core itself is not modified.
+
+Values taken from Pose2Sim (https://github.com/perfanalytics/pose2sim, commit 084d822d7b97165508cbcbaf77296a9a0f6a23a0),
+Copyright (c) 2022, perfanalytics, BSD 3-Clause License (full text in licenses/Pose2Sim-BSD-3-Clause.txt):
+  - worker_core/keypoint_mode.py HIP_MARKERS: the LHip/RHip marker locations of
+    Pose2Sim/OpenSim_Setup/Markers_Coco133.xml.
+  - worker_core/keypoint_mode.py FILTER_HZ/FILTER_ORDER: Pose2Sim's default Butterworth settings
+    (order 4, 6 Hz) from its Config.toml. The filter code itself is new.
 
 Third-party software inside the Docker images (built from upstream sources at install time,
 not stored in this repository). Anyone who redistributes the built images must follow

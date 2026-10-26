@@ -205,35 +205,66 @@ def test_activity_requires_augmented_trc(tmp_path, monkeypatch):
         k.run_activity({"id": "a", "session": "S1", "trial": "nope", "analysis": "gait"})
 
 
-def _fake_opencap_main(calls, data):
+TRC_HEADER = ("PathFileType\t4\t(X/Y/Z)\tx.trc\nDataRate\tCameraRate\tNumFrames\tNumMarkers\tUnits\n"
+              "60\t60\t{n}\t1\tm\nFrame#\tTime\tRHeel\n\t\tX1\tY1\tZ1\n")
+
+
+def write_trc(path, t, xyz):
+    rows = "".join(f"{i + 1}\t{ti:.6f}\t{p[0]:.6f}\t{p[1]:.6f}\t{p[2]:.6f}\n" for i, (ti, p) in enumerate(zip(t, xyz)))
+    Path(path).write_text(TRC_HEADER.format(n=len(t)) + rows)
+
+
+def read_trc_col(path, col):
+    return np.array([float(l.split("\t")[col]) for l in Path(path).read_text().splitlines()[5:] if l.strip()])
+
+
+MMPOSE_MARKERS = ("<OpenSimDocument><MarkerSet><objects>" + "".join(
+    f'<Marker name="{n}"><socket_parent_frame>/bodyset/pelvis</socket_parent_frame><location>-0.02 -0.078 0.09</location></Marker>'
+    for n in ("RHip", "LHip", "midHip")) + "</objects></MarkerSet></OpenSimDocument>")
+
+
+def _fake_opencap_main(calls, data, model_dir, trc):
     """main.py 처럼 모듈 전역의 augmentTRC/getScaleTimeRange/runScaleTool/runIKTool 을 호출 시점에 찾는 가짜."""
     mod = types.ModuleType("main")
     mod.augmentTRC = lambda *a, **k: calls.append(("orig_aug",)) or 0.0
     mod.getScaleTimeRange = lambda p, **k: calls.append(("orig_range", k)) or [0, 1]
-    mod.runScaleTool = lambda setup, *a, **k: calls.append(("orig_scale", setup)) or "m.osim"
-    mod.runIKTool = lambda setup, *a, **k: calls.append(("orig_ik", setup, open(setup).read() if Path(setup).exists() else "")) or ("x.mot", "m.osim")
+
+    def scale(setup, generic, *a, **k):
+        marker_set = Path(generic).parent / "LaiUhlrich2022_markers_mmpose.xml"
+        calls.append(("orig_scale", setup, generic, marker_set.read_text() if marker_set.exists() else ""))
+        return "m.osim"
+    mod.runScaleTool = scale
+    mod.runIKTool = lambda setup, model, trc_path, out, *a, **k: calls.append(
+        ("orig_ik", setup, open(setup).read() if Path(setup).exists() else "", trc_path, k)) or ("x.mot", "m.osim")
 
     def main(session, trialName, trial_id, **kw):
         sd = data / "Data" / session
-        mod.augmentTRC("pre.trc", 65, 1.7, "post.trc", "aug")
+        mod.augmentTRC(str(trc), 65, 1.7, str(trc), "aug")
         if kw.get("scaleModel"):
-            mod.getScaleTimeRange("post.trc", thresholdPosition=0.003, thresholdTime=0.1, removeRoot=True)
-            mod.runScaleTool("Setup_scaling_LaiUhlrich2022.xml", "LaiUhlrich2022.osim", 65, "post.trc", [0, 1], str(sd))
+            mod.getScaleTimeRange(str(trc), thresholdPosition=0.003, thresholdTime=0.1, removeRoot=True)
+            mod.runScaleTool("Setup_scaling_LaiUhlrich2022.xml", str(model_dir / "LaiUhlrich2022.osim"), 65, str(trc), [0, 1], str(sd))
             (sd / "OpenSimData" / "Model").mkdir(parents=True, exist_ok=True)
             (sd / "OpenSimData" / "Model" / "LaiUhlrich2022_scaled.osim").write_text("<osim/>")
         else:
             out = sd / "OpenSimData" / "Kinematics"
-            mod.runIKTool("Setup_IK.xml", "m.osim", "post.trc", str(out))
+            mod.runIKTool("Setup_IK.xml", "m.osim", str(trc), str(out))
             out.mkdir(parents=True, exist_ok=True)
             (out / f"{trial_id}.mot").write_text("endheader\ntime\n0\n")
     mod.main = main
     return mod
 
 
-def test_keypoint_mode_swaps_and_restores(core, monkeypatch):
+def test_keypoint_mode_swaps_and_restores(core, monkeypatch, tmp_path):
     w, _, data = core
     calls = []
-    mod = _fake_opencap_main(calls, data)
+    model_dir = tmp_path / "Models"
+    model_dir.mkdir()
+    (model_dir / "LaiUhlrich2022.osim").write_text("<osim/>")
+    (model_dir / "LaiUhlrich2022_markers_mmpose.xml").write_text(MMPOSE_MARKERS)
+    trc = tmp_path / "walk.trc"
+    t = np.arange(120) / 60
+    write_trc(trc, t, np.c_[t, 0.05 + 0.0 * t, 0.0 * t])
+    mod = _fake_opencap_main(calls, data, model_dir, trc)
     monkeypatch.setitem(sys.modules, "main", mod)
     monkeypatch.setitem(sys.modules, "utilsDataman", types.SimpleNamespace())
     import keypoint_mode as KM
@@ -246,20 +277,53 @@ def test_keypoint_mode_swaps_and_restores(core, monkeypatch):
     w.run_core({"id": "n", "session": "K", "trial": "neutral", "trial_type": "neutral", "kinematics_method": "keypoints"})
     assert calls[0] == ("pass",)  # LSTM 증강 대신 그대로 복사
     assert calls[1][0] == "orig_range" and calls[1][1]["withOpenPoseMarkers"] is True
-    assert calls[2] == ("orig_scale", str(w.OPENCAP_DIR / "opensimPipeline" / "Scaling" / "Setup_scaling_LaiUhlrich2022_mmpose.xml"))
+    tag, setup, generic, marker_xml = calls[2]
+    assert setup == str(w.OPENCAP_DIR / "opensimPipeline" / "Scaling" / "Setup_scaling_LaiUhlrich2022_mmpose.xml")
+    assert Path(generic).name == "LaiUhlrich2022.osim" and Path(generic).parent != model_dir  # 임시 사본으로 스케일링
+    assert not Path(generic).parent.exists()  # 끝나면 임시 폴더 삭제
+    assert "0.10540640790244724" in marker_xml and "-0.02 -0.078 0.09" not in marker_xml  # 엉덩이 위치 = Pose2Sim
+    assert (model_dir / "LaiUhlrich2022_markers_mmpose.xml").read_text() == MMPOSE_MARKERS  # OpenCap 원본은 그대로
     calls.clear()
     w.run_core({"id": "d", "session": "K", "trial": "walk", "trial_type": "dynamic", "kinematics_method": "keypoints"})
-    tag, setup, xml = calls[1]
+    tag, setup, xml, trc_used, kw = calls[1]
     assert tag == "orig_ik" and setup.endswith("Setup_IK_keypoints_generic.xml")
     assert 'IKMarkerTask name="RHip"' in xml and xml.count("<IKCoordinateTask") == len(KM.REGULARIZATION)
     assert '<IKCoordinateTask name="lumbar_extension"><apply>true</apply><weight>0.001</weight>' in xml
+    assert trc_used.endswith("walk_keypoints_filtered.trc") and kw["IKFileName"] == "walk"  # 필터 후 IK, 결과 이름은 시행 이름
     # 끝나면 원래 함수로 복원 → 기본 방식은 OpenCap 그대로
     assert {n: getattr(mod, n) for n in orig} == orig
     calls.clear()
     w.run_core({"id": "d2", "session": "K", "trial": "walk", "trial_type": "dynamic"})
-    assert [c[0] for c in calls] == ["orig_aug", "orig_ik"] and calls[1][1] == "Setup_IK.xml"
+    assert [c[0] for c in calls] == ["orig_aug", "orig_ik"] and calls[1][1] == "Setup_IK.xml" and calls[1][3] == str(trc)
     with pytest.raises(ValueError):
         w.run_core({"id": "x", "session": "K", "trial": "walk", "trial_type": "dynamic", "kinematics_method": "nope"})
+
+
+def test_lowpass_trc(tmp_path):
+    sys.path.insert(0, str(ROOT / "worker_core"))
+    import keypoint_mode as KM
+    t = np.arange(600) / 60
+    slow, fast = np.sin(2 * np.pi * 1 * t), 0.2 * np.sin(2 * np.pi * 20 * t)
+    src, dst = tmp_path / "a.trc", tmp_path / "b.trc"
+    write_trc(src, t, np.c_[slow + fast, slow, 0 * t])
+    assert KM.lowpass_trc(str(src), str(dst)) is True
+    x = read_trc_col(dst, 2)
+    mid = slice(60, -60)
+    assert np.max(np.abs(x[mid] - slow[mid])) < 0.02  # 20 Hz 떨림 제거, 1 Hz 움직임 유지
+    assert np.allclose(read_trc_col(dst, 1), t, atol=1e-6)  # 시간 열은 그대로
+    short = tmp_path / "s.trc"
+    write_trc(short, t[:10], np.zeros((10, 3)))
+    assert KM.lowpass_trc(str(short), str(dst)) is False and dst.read_text() == short.read_text()
+
+
+def test_keypoint_marker_set_requires_markers():
+    sys.path.insert(0, str(ROOT / "worker_core"))
+    import keypoint_mode as KM
+    out = KM.keypoint_marker_set(MMPOSE_MARKERS)
+    x, y, _ = KM.HIP_MARKERS["RHip"]
+    assert out.count(f"<location>{x} {y} ") == 3 and "-0.02 -0.078 0.09" not in out
+    with pytest.raises(ValueError):
+        KM.keypoint_marker_set("<objects></objects>")
 
 
 def test_passthrough_trc_offsets_like_opencap(tmp_path, monkeypatch):
