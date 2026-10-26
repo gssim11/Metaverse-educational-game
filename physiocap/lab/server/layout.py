@@ -34,6 +34,26 @@ KINETIC_MOTIONS = {
 }
 NO_KINETICS = "none"
 
+# 관절각 계산 방식별로 분석·표시에서 빼는 관절. B 방식(keypoints)의 거골하 각도는 키포인트로 발의
+# 안쪽·바깥쪽 기울기를 정할 수 없어 거의 0°에 고정된다(lab/README.md B 방식 절). 원본 .mot 에는
+# 동역학 시뮬레이션 입력으로 남겨 두고, 결과 화면·정확도 검증·동역학 요약에서만 뺀다.
+EXCLUDED_COORDINATES = {"keypoints": ("subtalar_angle_r", "subtalar_angle_l")}
+
+
+def excluded_coordinates(kinematics_method: str | None) -> tuple[str, ...]:
+    return EXCLUDED_COORDINATES.get(kinematics_method or "augmenter", ())
+
+
+def is_excluded(name: str, excluded) -> bool:
+    """관절각 이름 또는 그 관절의 모멘트·시뮬레이션 라벨(예: subtalar_angle_r_moment)이 제외 대상인지."""
+    return any(name == c or name.startswith(c + "_") for c in excluded)
+
+
+def drop_coordinates(mot: dict, excluded) -> dict:
+    """read_mot 결과 {columns, data} 에서 제외 관절 열을 뺀다."""
+    keep = [i for i, c in enumerate(mot["columns"]) if not is_excluded(c, excluded)]
+    return {"columns": [mot["columns"][i] for i in keep], "data": [[row[i] for i in keep] for row in mot["data"]]}
+
 SAFE = re.compile(r"[^A-Za-z0-9_\-]")
 
 

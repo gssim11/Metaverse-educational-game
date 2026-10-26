@@ -218,3 +218,56 @@ def test_kinematics_method_option(env, tmp_path):
     import store as st
     job = st.claim_job(appmod.DATA, {"core"})
     assert job["kinematics_method"] == "keypoints" and job["opensim_model"] == "LaiUhlrich2022"
+
+
+def test_keypoint_sessions_exclude_subtalar(env, tmp_path):
+    """B 방식 세션: 결과·동역학 요약·정확도 검증에서 거골하 관절을 뺀다. 기본 방식 세션은 그대로."""
+    appmod, c, _ = env
+    register(c, "a"); register(c, "b")
+    base = {"subject": {"height_m": 1.7, "mass_kg": 65}, "cameras": {"Cam0": "a", "Cam1": "b"}}
+    model = appmod.L.camera_model_key("SM-S921N", 720, 1280, 60)
+    d = appmod.DATA / "intrinsics" / model / "Deployed"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "cameraIntrinsics.pickle").write_bytes(b"x")
+    mot = ("x\nendheader\ntime\tknee_angle_r\tsubtalar_angle_r\tsubtalar_angle_l\n"
+           + "".join(f"{i / 10}\t{10 * i}\t{i}\t{-i}\n" for i in range(30)))
+    sids = {}
+    for method in ("keypoints", "augmenter"):
+        s = c.post("/api/sessions", json={**base, "kinematics_method": method}).json()
+        c.post(f"/api/sessions/{s['id']}/trials", json={"type": "calibration"})
+        p = appmod.L.kinematics_mot(appmod.DATA, s["id"], "calibration")
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(mot)
+        dyn = appmod.L.dynamics_dir(appmod.DATA, s["id"], "calibration")
+        dyn.mkdir(parents=True, exist_ok=True)
+        (dyn / "physiocap_summary.json").write_text(json.dumps({"time": [0, 1], "series": {
+            "torques": {"unit": "Nm", "labels": ["knee_angle_r", "subtalar_angle_r"], "data": {"knee_angle_r": [1, 2], "subtalar_angle_r": [3, 4]}},
+            "GRF": {"unit": "N", "labels": ["ground_force_r_vy"], "data": {"ground_force_r_vy": [5, 6]}}}}))
+        sids[method] = s["id"]
+
+    r = c.get(f"/api/sessions/{sids['keypoints']}/trials/calibration/results").json()
+    assert r["kinematics"]["columns"] == ["time", "knee_angle_r"] and r["kinematics"]["data"][3] == [0.3, 30.0]
+    assert r["excluded_coordinates"] == ["subtalar_angle_r", "subtalar_angle_l"]
+    assert r["kinetics"]["series"]["torques"]["labels"] == ["knee_angle_r"] and "subtalar_angle_r" not in r["kinetics"]["series"]["torques"]["data"]
+    assert r["kinetics"]["series"]["GRF"]["labels"] == ["ground_force_r_vy"]
+    r = c.get(f"/api/sessions/{sids['augmenter']}/trials/calibration/results").json()
+    assert "subtalar_angle_r" in r["kinematics"]["columns"] and r["excluded_coordinates"] == []
+    assert r["kinetics"]["series"]["torques"]["labels"] == ["knee_angle_r", "subtalar_angle_r"]
+
+    # 시계열 검증: 열을 지정하지 않으면 거골하는 자동으로 빠지고, 직접 지정하면 거부
+    def series(sid, columns=""):
+        return c.post("/api/validation/series", files={"reference": ("ref.mot", mot.encode(), "text/plain")},
+                      data={"session": sid, "trial": "calibration", "columns": columns})
+    res = series(sids["keypoints"]).json()["result"]
+    assert set(res["columns"]) == {"knee_angle_r"}
+    rr = series(sids["keypoints"], "knee_angle_r,subtalar_angle_l")
+    assert rr.status_code == 400 and "subtalar_angle_l" in rr.json()["detail"]
+    assert set(series(sids["augmenter"]).json()["result"]["columns"]) == {"knee_angle_r", "subtalar_angle_r", "subtalar_angle_l"}
+
+    # 고니오미터 기록지: B 세션의 거골하 행은 거부
+    sheet = "subject,session,trial,coordinate,mode,reference_deg\n" + "".join(
+        f"P{i},{sids['keypoints']},calibration,knee_angle_r,max,{v}\n" for i, v in enumerate((280, 290, 300)))
+    assert c.post("/api/validation/discrete", files={"sheet": ("g.csv", sheet.encode(), "text/csv")}).status_code == 200
+    bad = sheet + f"P9,{sids['keypoints']},calibration,subtalar_angle_r,max,20\n"
+    rr = c.post("/api/validation/discrete", files={"sheet": ("g.csv", bad.encode(), "text/csv")})
+    assert rr.status_code == 400 and "B 방식" in rr.json()["detail"]

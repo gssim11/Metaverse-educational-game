@@ -154,7 +154,12 @@ async function openResult(tid) {
   $('#rvTitle').textContent = `${s.name} / ${tid}`;
   const notes = [];
   if (r.kinetics?.note) notes.push(r.kinetics.note);
-  notes.push('관절각은 OpenCap 원본 파이프라인(삼각측량 → LSTM 마커 보강 → OpenSim 역기구학) 결과입니다. 갤럭시 렌즈 보정값은 이 서버에서 계산한 값입니다.');
+  if (r.kinematics_method === 'keypoints') {
+    notes.push('관절각은 B 방식(삼각측량한 영상 키포인트로 직접 OpenSim 역기구학, 마커 보강 없음) 결과입니다. 갤럭시 렌즈 보정값은 이 서버에서 계산한 값입니다.');
+    if (r.excluded_coordinates?.length) notes.push(`B 방식에서는 거골하 관절(${r.excluded_coordinates.join(', ')})을 분석에서 뺐습니다. 키포인트로는 발의 안쪽·바깥쪽 기울기를 정할 수 없어 값이 거의 0°에 고정되기 때문입니다. 원본 .mot 파일에는 동역학 계산 입력으로 남아 있습니다.`);
+  } else {
+    notes.push('관절각은 OpenCap 원본 파이프라인(삼각측량 → LSTM 마커 보강 → OpenSim 역기구학) 결과입니다. 갤럭시 렌즈 보정값은 이 서버에서 계산한 값입니다.');
+  }
   $('#rvNotes').innerHTML = notes.map((n) => `<div class="note">${esc(n)}</div>`).join('');
   // 3D 재생
   await show3D(s.id, tid, r);

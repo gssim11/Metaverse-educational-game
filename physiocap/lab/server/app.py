@@ -471,21 +471,33 @@ def results(sid: str, tid: str):
     s = get_session(sid)
     t = _trial(s, tid)
     sd = L.session_dir(DATA, sid)
-    out = {"trial": t, "files": []}
+    excl = L.excluded_coordinates(s.get("kinematics_method"))
+    out = {"trial": t, "files": [], "kinematics_method": s.get("kinematics_method", "augmenter"),
+           "excluded_coordinates": list(excl)}
     mot = L.kinematics_mot(DATA, sid, tid)
     if mot.exists():
-        out["kinematics"] = L.read_mot(mot)
+        out["kinematics"] = L.drop_coordinates(L.read_mot(mot), excl)
     out["has_visualizer"] = _visualizer_path(sid, tid) is not None
     act = L.session_dir(DATA, sid) / "OpenSimData" / "Activity" / tid / "physiocap_activity.json"
     if act.exists():
         out["activity"] = _read(act)
     dyn = L.dynamics_dir(DATA, sid, tid) / "physiocap_summary.json"
     if dyn.exists():
-        out["kinetics"] = _read(dyn)
+        out["kinetics"] = _drop_kinetics(_read(dyn), excl)
     for p in sorted(sd.rglob("*")):
         if p.is_file() and p.suffix.lower() in (".mot", ".trc", ".osim", ".json", ".jpg", ".png", ".csv", ".yaml", ".npy", ".sto") and (tid in p.parts or tid in p.stem or p.parent.name in ("Model", "CalibrationImages")):
             out["files"].append(str(p.relative_to(DATA)))
     return out
+
+
+def _drop_kinetics(summary: dict, excluded) -> dict:
+    """동역학 요약에서 제외 관절의 모멘트·관절각 라벨을 뺀다(지면반력·근육 항목은 그대로)."""
+    if not excluded:
+        return summary
+    for sr in summary.get("series", {}).values():
+        sr["labels"] = [lab for lab in sr.get("labels", []) if not L.is_excluded(lab, excluded)]
+        sr["data"] = {k: v for k, v in sr.get("data", {}).items() if not L.is_excluded(k, excluded)}
+    return summary
 
 
 def _visualizer_path(sid: str, tid: str) -> Path | None:
@@ -559,7 +571,21 @@ def _lab_series(sid: str, tid: str, source: str) -> dict:
     mot = L.kinematics_mot(DATA, sid, tid)
     if not mot.exists():
         raise HTTPException(409, "이 시행의 관절각(.mot)이 없습니다.")
-    return VAL.read_table(mot.read_text(), mot.name)
+    series = VAL.read_table(mot.read_text(), mot.name)
+    excl = _session_excluded(sid)
+    series["cols"] = {c: v for c, v in series["cols"].items() if not L.is_excluded(c, excl)}
+    return series
+
+
+def _session_excluded(sid: str) -> tuple[str, ...]:
+    return L.excluded_coordinates(get_session(sid).get("kinematics_method"))
+
+
+def _reject_excluded(sid: str, coords) -> None:
+    bad = [c for c in coords if L.is_excluded(c, _session_excluded(sid))]
+    if bad:
+        raise HTTPException(400, f"B 방식(키포인트) 세션에서는 {', '.join(bad)} 을(를) 분석하지 않습니다. "
+                                 "이 관절은 기본(OpenCap) 방식 세션으로 측정하세요.")
 
 
 def _save_validation(rec: dict) -> dict:
@@ -586,6 +612,8 @@ def validation_series(reference: UploadFile = File(...), test_file: UploadFile |
             origin = {"file": test_file.filename}
         elif session and trial:
             get_session(session)
+            if source == "kinematics":
+                _reject_excluded(session, [c.strip() for c in columns.split(",") if c.strip()])
             test = _lab_series(session, trial, source)
             origin = {"session": session, "trial": trial}
         else:
@@ -624,8 +652,8 @@ def validation_discrete(sheet: UploadFile = File(...), label: str = Form(""), ac
                 tv = float(r["test_value"])
             else:
                 key = (r["session"], r["trial"])
+                _reject_excluded(r["session"], [coord])  # 세션이 없으면 여기서 404
                 if key not in cache:
-                    get_session(r["session"])
                     cache[key] = _lab_series(r["session"], r["trial"], "kinematics")
                 t0 = float(r["t_start"]) if r.get("t_start") else None
                 t1 = float(r["t_end"]) if r.get("t_end") else None
