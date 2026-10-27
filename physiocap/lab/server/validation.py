@@ -162,8 +162,39 @@ def icc(test: list[float], ref: list[float], alpha: float = 0.05) -> dict:
     return icc_matrix(np.column_stack([np.asarray(test, float), np.asarray(ref, float)]), alpha)
 
 
+def _num(x):
+    """유한한 실수면 float, 아니면(NaN·무한대·0으로 나눔) None."""
+    try:
+        x = float(x)
+    except (TypeError, ValueError, ZeroDivisionError):
+        return None
+    return x if math.isfinite(x) else None
+
+
+def json_safe(obj):
+    """NaN·무한대를 None(null)으로 바꾼다. JSON 표준은 NaN 을 허용하지 않아 그대로 두면 응답이 실패한다."""
+    if isinstance(obj, dict):
+        return {k: json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [json_safe(v) for v in obj]
+    if isinstance(obj, (float, np.floating)):
+        return _num(obj)
+    if isinstance(obj, np.integer):
+        return int(obj)
+    return obj
+
+
+ICC_NOT_COMPUTABLE = {
+    "constant": "계산 불가: 모든 측정값이 같습니다.",
+    "no_between": "계산 불가: 대상자 간 차이가 없습니다(ICC 는 대상자 간 변동이 있어야 의미가 있음).",
+}
+
+
 def icc_matrix(Y, alpha: float = 0.05) -> dict:
-    """대상 n × 측정자 k 행렬의 ICC. ICC(2,1)=두 방향 무작위·절대 일치, ICC(3,1)=두 방향 혼합·일관성 (Shrout & Fleiss 1979)."""
+    """대상 n × 측정자 k 행렬의 ICC. ICC(2,1)=두 방향 무작위·절대 일치, ICC(3,1)=두 방향 혼합·일관성 (Shrout & Fleiss 1979).
+
+    계산할 수 없는 값(0으로 나눔 등)은 None 으로 두고, 사유를 interpretation·note 에 적는다.
+    """
     Y = np.asarray(Y, float)
     Y = Y[np.all(np.isfinite(Y), axis=1)]
     n, k = Y.shape
@@ -173,26 +204,43 @@ def icc_matrix(Y, alpha: float = 0.05) -> dict:
     ssr = k * ((Y.mean(axis=1) - gm) ** 2).sum()
     ssc = n * ((Y.mean(axis=0) - gm) ** 2).sum()
     sst = ((Y - gm) ** 2).sum()
-    sse = sst - ssr - ssc
-    msr, msc, mse = ssr / (n - 1), ssc / (k - 1), sse / ((n - 1) * (k - 1))
+    sse = max(sst - ssr - ssc, 0.0)
     out = {"n": int(n)}
-    # ICC(3,1)
-    i31 = (msr - mse) / (msr + (k - 1) * mse)
-    fo = msr / mse if mse > 0 else math.inf
-    fl = fo / _f_ppf(1 - alpha / 2, n - 1, (n - 1) * (k - 1))
-    fu = fo * _f_ppf(1 - alpha / 2, (n - 1) * (k - 1), n - 1)
-    out["icc3_1"] = {"value": float(i31), "ci": [float((fl - 1) / (fl + k - 1)), float((fu - 1) / (fu + k - 1))]}
-    # ICC(2,1) — 신뢰구간은 McGraw & Wong 의 근사 자유도
-    i21 = (msr - mse) / (msr + (k - 1) * mse + k * (msc - mse) / n)
-    a = k * i21 / (n * (1 - i21))
-    b = 1 + k * i21 * (n - 1) / (n * (1 - i21))
-    v = (a * msc + b * mse) ** 2 / ((a * msc) ** 2 / (k - 1) + (b * mse) ** 2 / ((n - 1) * (k - 1)))
-    fl2 = _f_ppf(1 - alpha / 2, n - 1, v)
-    fu2 = _f_ppf(1 - alpha / 2, v, n - 1)
-    lo = n * (msr - fl2 * mse) / (fl2 * (k * msc + (k * n - k - n) * mse) + n * msr)
-    hi = n * (fu2 * msr - mse) / (k * msc + (k * n - k - n) * mse + n * fu2 * msr)
-    out["icc2_1"] = {"value": float(i21), "ci": [float(lo), float(hi)]}
-    out["interpretation"] = interpret_icc(out["icc2_1"]["ci"][0], out["icc2_1"]["ci"][1])
+    tol = 1e-12 * max(1.0, float((Y ** 2).sum()))  # 반올림 오차 수준이면 0 으로 본다
+    reason = "constant" if sst <= tol else "no_between" if ssr <= tol else None
+    if reason:
+        none = {"value": None, "ci": [None, None]}
+        out.update(icc3_1=dict(none), icc2_1=dict(none), interpretation=ICC_NOT_COMPUTABLE[reason], note=reason)
+        return out
+    if sse <= tol:
+        sse = 0.0
+    msr, msc, mse = ssr / (n - 1), ssc / (k - 1), sse / ((n - 1) * (k - 1))
+    with np.errstate(divide="ignore", invalid="ignore"):
+        # ICC(3,1)
+        i31 = (msr - mse) / (msr + (k - 1) * mse)
+        fo = msr / mse if mse > 0 else math.inf
+        fl = fo / _f_ppf(1 - alpha / 2, n - 1, (n - 1) * (k - 1))
+        fu = fo * _f_ppf(1 - alpha / 2, (n - 1) * (k - 1), n - 1)
+        ci31 = [(fl - 1) / (fl + k - 1), (fu - 1) / (fu + k - 1)] if mse > 0 else [None, None]
+        out["icc3_1"] = {"value": _num(i31), "ci": [_num(x) for x in ci31]}
+        # ICC(2,1) — 신뢰구간은 McGraw & Wong 의 근사 자유도
+        i21 = (msr - mse) / (msr + (k - 1) * mse + k * (msc - mse) / n)
+        ci21 = [None, None]
+        if mse > 0 and i21 < 1:
+            a = k * i21 / (n * (1 - i21))
+            b = 1 + k * i21 * (n - 1) / (n * (1 - i21))
+            v = (a * msc + b * mse) ** 2 / ((a * msc) ** 2 / (k - 1) + (b * mse) ** 2 / ((n - 1) * (k - 1)))
+            fl2 = _f_ppf(1 - alpha / 2, n - 1, v)
+            fu2 = _f_ppf(1 - alpha / 2, v, n - 1)
+            ci21 = [n * (msr - fl2 * mse) / (fl2 * (k * msc + (k * n - k - n) * mse) + n * msr),
+                    n * (fu2 * msr - mse) / (k * msc + (k * n - k - n) * mse + n * fu2 * msr)]
+        out["icc2_1"] = {"value": _num(i21), "ci": [_num(x) for x in ci21]}
+    lo, hi = out["icc2_1"]["ci"]
+    if lo is not None and hi is not None:
+        out["interpretation"] = interpret_icc(lo, hi)
+    else:
+        out["interpretation"] = "신뢰구간 계산 불가: 두 측정법의 차이가 모든 대상자에서 같습니다(오차 분산 0)."
+        out["note"] = "no_error_variance"
     return out
 
 

@@ -171,3 +171,47 @@ def test_jobs_claimed_in_enqueue_order(tmp_path):
     assert ids == sorted(ids)
     got = [st.claim_job(tmp_path / "q", {"activity", "kinetics"})["n"] for _ in range(50)]
     assert got == list(range(50))
+
+
+def test_icc_not_computable_cases():
+    """분산이 0인 경우: NaN 대신 None 과 사유를 돌려준다."""
+    # 1) 모든 값이 같음
+    r = V.icc([290, 290, 290], [290, 290, 290])
+    assert r["icc2_1"]["value"] is None and r["icc3_1"]["value"] is None and "모든 측정값이 같" in r["interpretation"]
+    # 2) 대상자 간 차이 없음(방법 간 차이만 있음)
+    r = V.icc([292, 292, 292], [290, 290, 290])
+    assert r["icc2_1"]["value"] is None and "대상자 간" in r["interpretation"]
+    # 3) 두 방법의 차이가 모든 대상자에서 같음(오차 분산 0): ICC 값은 있고 신뢰구간만 계산 불가
+    r = V.icc([12, 22, 32, 42], [10, 20, 30, 40])
+    assert r["icc3_1"]["value"] == pytest.approx(1.0) and r["icc3_1"]["ci"] == [None, None]
+    assert 0 < r["icc2_1"]["value"] < 1 and r["icc2_1"]["ci"] == [None, None] and "신뢰구간 계산 불가" in r["interpretation"]
+    # 어떤 경우든 표준 JSON 으로 직렬화 가능해야 한다
+    for t, ref in (([290] * 3, [290] * 3), ([292] * 3, [290] * 3), ([12, 22, 32, 42], [10, 20, 30, 40])):
+        json.dumps(V.compare_discrete([{"test": a, "ref": b} for a, b in zip(t, ref)]), allow_nan=False)
+    # 정상 자료는 이전과 같다
+    r = V.icc([10, 21, 29, 42, 50], [11, 20, 31, 40, 52])
+    assert r["icc2_1"]["value"] > 0.9 and None not in r["icc2_1"]["ci"] and "note" not in r
+
+
+def test_json_safe():
+    out = V.json_safe({"a": float("nan"), "b": [1.0, float("inf"), np.float64(2.5)], "c": {"d": np.int64(3)}, "e": "x"})
+    assert out == {"a": None, "b": [1.0, None, 2.5], "c": {"d": 3}, "e": "x"}
+
+
+def test_discrete_api_when_icc_not_computable(env):
+    """모든 측정값이 같은 기록지도 500 오류 없이 결과를 돌려주고, 이전 버전이 NaN 으로 저장한 파일도 읽힌다."""
+    appmod, c, _ = env
+    sheet = "subject,coordinate,mode,reference_deg,test_value\n" + "".join(f"P{i},knee_angle_r,max,90,90\n" for i in range(3))
+    r = c.post("/api/validation/discrete", files={"sheet": ("g.csv", sheet.encode(), "text/csv")})
+    assert r.status_code == 200
+    g = r.json()["result"]["groups"]["knee_angle_r|max"]
+    assert g["icc"]["icc2_1"]["value"] is None and "계산 불가" in g["icc"]["interpretation"]
+    vid = r.json()["id"]
+    assert c.get(f"/api/validation/{vid}").status_code == 200
+    # 이전 버전 파일(NaN 그대로 저장)
+    old = appmod.DATA / "validation" / "val_old.json"
+    old.write_text('{"id": "val_old", "kind": "series", "source": "kinematics", "activity": "walking", '
+                   '"result": {"summary": {"rotations_mae_mean": NaN}, "columns": {"knee_angle_r": {"mae": NaN}}}}')
+    assert c.get("/api/validation/val_old").json()["result"]["summary"]["rotations_mae_mean"] is None
+    assert c.get("/api/validation").status_code == 200
+    assert c.get("/api/validation/summary").status_code == 200

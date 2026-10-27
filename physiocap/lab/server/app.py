@@ -592,8 +592,18 @@ def _save_validation(rec: dict) -> dict:
     import json
     rec["id"] = "val_" + time.strftime("%Y%m%d_%H%M%S") + "_" + uuid.uuid4().hex[:4]
     rec["created"] = now_ms()
-    (_val_dir() / f"{rec['id']}.json").write_text(json.dumps(rec, ensure_ascii=False))
+    rec = VAL.json_safe(rec)  # 계산 불가 값(NaN)은 null 로 저장·응답
+    (_val_dir() / f"{rec['id']}.json").write_text(json.dumps(rec, ensure_ascii=False, allow_nan=False))
     return rec
+
+
+def _load_validation(p: Path):
+    """저장된 검증 결과를 읽는다. 이전 버전이 NaN 을 그대로 저장한 파일도 null 로 바꿔 읽는다."""
+    import json
+    try:
+        return VAL.json_safe(json.loads(p.read_text()))
+    except ValueError:
+        return None
 
 
 @app.post("/api/validation/series")
@@ -674,12 +684,10 @@ def validation_discrete(sheet: UploadFile = File(...), label: str = Form(""), ac
 
 @app.get("/api/validation")
 def validation_list():
-    import json
     out = []
     for p in sorted(_val_dir().glob("val_*.json"), reverse=True):
-        try:
-            r = json.loads(p.read_text())
-        except ValueError:
+        r = _load_validation(p)
+        if r is None:
             continue
         brief = {k: r.get(k) for k in ("id", "kind", "source", "activity", "label", "reference", "test", "created")}
         if r.get("kind") == "series":
@@ -690,22 +698,17 @@ def validation_list():
 
 @app.get("/api/validation/summary")
 def validation_summary():
-    import json
-    recs = []
-    for p in _val_dir().glob("val_*.json"):
-        try:
-            recs.append(json.loads(p.read_text()))
-        except ValueError:
-            pass
-    return VAL.aggregate(recs)
+    recs = [r for r in (_load_validation(p) for p in _val_dir().glob("val_*.json")) if r is not None]
+    return VAL.json_safe(VAL.aggregate(recs))
 
 
 @app.get("/api/validation/{vid}")
 def validation_get(vid: str):
     p = _val_dir() / f"{L.safe_name(vid)}.json"
-    if not p.exists():
+    r = _load_validation(p) if p.exists() else None
+    if r is None:
         raise HTTPException(404)
-    return FileResponse(p, media_type="application/json")
+    return r
 
 
 @app.delete("/api/validation/{vid}")
