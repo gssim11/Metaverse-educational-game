@@ -1,0 +1,40 @@
+# PhysioCap Lab — NVIDIA GPU가 없는 PC(노트북 등)용 CPU 구성
+#   docker compose -f docker-compose.cpu.yml up -d --build
+# GPU 구성(docker-compose.yml)과 같은 이미지·같은 데이터 볼륨을 쓰고, 두 가지만 다르다.
+#   - GPU 예약을 하지 않는다.
+#   - 포즈 인식 컨테이너가 OpenCap 원래 루프 대신 mmpose_cpu/loop_mmpose_cpu.py(같은 모델·임계값, 장치만 CPU)를 실행한다.
+# 속도 측정:  docker compose -f docker-compose.cpu.yml run --rm mmpose python /mmpose/benchmark_pose.py
+name: physiocap-lab
+
+services:
+  server:
+    build: { context: ., dockerfile: server/Dockerfile }
+    ports: ["8000:8000"]
+    volumes: [physiocap-data:/data]
+    restart: unless-stopped
+
+  core:
+    build: { context: ., dockerfile: worker_core/Dockerfile }
+    volumes: [physiocap-data:/data]
+    restart: unless-stopped
+
+  mmpose:
+    build:
+      context: https://github.com/stanfordnmbl/opencap-core.git#e5d29f12e725a2e14e6e4e85617834685f738753
+      dockerfile: docker/mmpose/Dockerfile
+    volumes:
+      - physiocap-data:/mmpose/data
+      - ./mmpose_cpu/loop_mmpose_cpu.py:/mmpose/loop_mmpose_cpu.py:ro
+      - ./mmpose_cpu/benchmark_pose.py:/mmpose/benchmark_pose.py:ro
+    environment:
+      PHYSIOCAP_POSE_DEVICE: cpu
+    command: ["python", "/mmpose/loop_mmpose_cpu.py"]
+    restart: unless-stopped
+
+  kinetics:
+    build: { context: ., dockerfile: worker_kinetics/Dockerfile }
+    volumes: [physiocap-data:/data]
+    restart: unless-stopped
+
+volumes:
+  physiocap-data:

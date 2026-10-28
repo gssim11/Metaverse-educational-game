@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PhysioCap Lab</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="bar">
+  <div><b>PhysioCap Lab</b> <span class="muted">갤럭시 2대 · OpenCap 파이프라인</span></div>
+  <span id="health" class="pill">연결 확인 중…</span>
+</header>
+
+<main>
+  <nav class="tabs">
+    <button data-tab="sessions" class="on">세션</button>
+    <button data-tab="devices">폰 연결</button>
+    <button data-tab="intrinsics">렌즈 보정</button>
+    <button data-tab="validation">정확도 검증</button>
+  </nav>
+
+  <!-- 폰 연결 -->
+  <section id="tab-devices" class="tab">
+    <div class="card">
+      <h2>1. 폰을 서버에 연결</h2>
+      <p>두 폰에서 PhysioCap 앱 → <b>연구실 모드</b>를 열고 아래 QR 을 스캔하거나 주소를 입력하세요. 폰과 이 PC 는 같은 Wi-Fi 에 있어야 합니다.</p>
+      <div class="row">
+        <div id="qr" class="qr"></div>
+        <div>
+          <label>서버 주소 (폰에서 접속할 PC 주소)
+            <input id="serverUrl" placeholder="http://192.168.0.10:8000">
+          </label>
+          <p class="muted">localhost 가 아니라 PC 의 내부 IP 를 넣으세요. Windows: <code>ipconfig</code>, Linux: <code>ip addr</code></p>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>연결된 폰</h2>
+      <table id="devTable" class="tbl"></table>
+    </div>
+  </section>
+
+  <!-- 렌즈 보정 -->
+  <section id="tab-intrinsics" class="tab">
+    <div class="card">
+      <h2>기종별 렌즈 보정 (기종·해상도·프레임률마다 1회)</h2>
+      <p>OpenCap 은 iPhone 기종별 렌즈 값을 미리 갖고 있지만 갤럭시 값은 없어 직접 만들어야 합니다. 인쇄한 체커보드를 폰 앞에서 천천히 여러 방향·거리로 30~60초 비추세요(화면 가장자리까지 골고루).</p>
+      <div class="grid3">
+        <label>폰 <select id="intrDevice"></select></label>
+        <label>가로 내부 코너 수 <input id="intrCols" type="number" value="5"></label>
+        <label>세로 내부 코너 수 <input id="intrRows" type="number" value="4"></label>
+        <label>칸 한 변 (mm) <input id="intrSquare" type="number" value="35"></label>
+      </div>
+      <div class="row">
+        <button id="intrStart" class="primary">녹화 시작</button>
+        <button id="intrStop">정지·업로드</button>
+      </div>
+      <h3>보정된 기종</h3>
+      <ul id="intrModels"></ul>
+      <h3>캡처 기록</h3>
+      <table id="intrTable" class="tbl"></table>
+    </div>
+  </section>
+
+  <!-- 세션 -->
+  <section id="tab-validation" class="tab">
+    <div class="card">
+      <h2>정확도 검증</h2>
+      <p class="muted">기준 장비(3D 모캡 IK·IMU·고니오미터·지면반력판) 결과와 PhysioCap 결과를 비교합니다. 절차와 판정 기준은 <code>physiocap/lab/VALIDATION.md</code>, 양식: <a href="templates/goniometer_pilot_form.html" target="_blank">인쇄용 고니오미터 기록지</a> · <a href="templates/goniometer_record.csv" download>기록지 CSV</a> · <a href="templates/pilot_goniometer_example.csv" download>CSV 작성 예시(가상값)</a> · <a href="templates/reference_series.csv" download>시계열 양식</a>.</p>
+      <div class="split">
+        <form id="valSeriesForm">
+          <h3>① 시계열 비교 (모캡·IMU·지면반력판)</h3>
+          <div class="grid3">
+            <label>PhysioCap 쪽<select name="testFrom" id="valTestFrom"><option value="lab">랩 시행 결과</option><option value="file">파일(모바일 CSV 등)</option></select></label>
+            <label id="valTrialLbl">시행<select id="valTrial"></select></label>
+            <label id="valFileLbl" hidden>PhysioCap 파일<input type="file" name="test_file" accept=".csv,.mot,.sto"></label>
+            <label>비교 대상<select name="source"><option value="kinematics">관절각</option><option value="grf">지면반력(%체중)</option></select></label>
+            <label>동작<select name="activity"><option value="walking">보행</option><option value="squats">스쿼트</option><option value="sit_to_stand">앉았다 일어서기</option><option value="drop_jump">드롭 점프</option><option value="other">기타</option></select></label>
+            <label>기준 장비 파일<input type="file" name="reference" accept=".csv,.mot,.sto" required></label>
+            <label>시간 맞춤 기준 열<input name="align_on" placeholder="예: knee_angle_r (비우면 맞춤 안 함)"></label>
+            <label>분석 구간(초)<input name="window" placeholder="예: 1.0,6.5"></label>
+            <label>비교 열(쉼표)<input name="columns" placeholder="비우면 공통 열 전체"></label>
+            <label>메모<input name="label" placeholder="대상자·조건"></label>
+            <label class="inline"><input type="checkbox" name="remove_offset" value="true"> 영점 차이 제거</label>
+          </div>
+          <button class="primary">비교 실행</button>
+        </form>
+        <form id="valDiscreteForm">
+          <h3>② 이산값 비교 (고니오미터 기록지)</h3>
+          <div class="grid3">
+            <label>기록지 CSV<input type="file" name="sheet" accept=".csv" required></label>
+            <label>동작<select name="activity"><option value="other">ROM/기타</option><option value="squats">스쿼트</option><option value="sit_to_stand">앉았다 일어서기</option><option value="walking">보행</option></select></label>
+            <label>메모<input name="label"></label>
+          </div>
+          <button class="primary">비교 실행</button>
+        </form>
+      </div>
+      <p id="valErr" class="err"></p>
+    </div>
+    <div class="card">
+      <h2>누적 요약 (OpenCap 논문 값과 비교)</h2>
+      <div id="valSummary" class="muted">아직 결과가 없습니다.</div>
+    </div>
+    <div class="split">
+      <div class="card"><h2>검증 기록</h2><ul id="valList" class="list"></ul></div>
+      <div class="card" id="valDetail" hidden>
+        <h2 id="valTitle"></h2>
+        <p id="valMeta" class="muted"></p>
+        <table id="valTable" class="tbl"></table>
+        <h3>Bland–Altman 그림 <span id="valBaName"></span></h3>
+        <canvas id="valBa" class="chart"></canvas>
+        <p class="muted">가로: 두 방법의 평균, 세로: 차이(PhysioCap − 기준). 실선 = 편향, 점선 = 95% 일치한계.</p>
+      </div>
+    </div>
+  </section>
+  <section id="tab-sessions" class="tab on">
+    <div class="split">
+      <div class="card">
+        <h2>새 세션</h2>
+        <div class="grid3">
+          <label>세션 이름 <input id="sName" placeholder="예: 홍길동_1회차"></label>
+          <label>키 (m) <input id="sHeight" type="number" step="0.01" value="1.70"></label>
+          <label>체중 (kg) <input id="sMass" type="number" step="0.1" value="65"></label>
+          <label>성별 <select id="sSex"><option value="m">남</option><option value="f">여</option></select></label>
+          <label>Cam0 <select id="sCam0"></select></label>
+          <label>Cam1 <select id="sCam1"></select></label>
+          <label>체커보드 가로 코너 <input id="sCols" type="number" value="5"></label>
+          <label>세로 코너 <input id="sRows" type="number" value="4"></label>
+          <label>칸 (mm) <input id="sSquare" type="number" value="35"></label>
+          <label>체커보드 위치 <select id="sPlace"><option value="backWall">세워 둠(정면 벽/의자)</option><option value="ground">바닥에 눕힘</option></select></label>
+          <label>포즈 인식 <select id="sPose"><option value="hrnet">HRNet (OpenCap 기본)</option><option value="openpose">OpenPose</option></select></label>
+          <label>관절각 계산 <select id="sMethod"><option value="augmenter">OpenCap 기본 (LSTM 마커 증강)</option><option value="keypoints">B 방식 (키포인트 직접 역기구학)</option></select></label>
+        </div>
+        <button id="sCreate" class="primary">세션 만들기</button>
+        <h3>세션 목록</h3>
+        <ul id="sessionList" class="list"></ul>
+      </div>
+
+      <div class="card" id="sessionView" hidden>
+        <h2 id="svTitle"></h2>
+        <p id="svSub" class="muted"></p>
+        <ol class="steps">
+          <li><b>체커보드 보정</b> — 두 폰 모두에 체커보드가 또렷이 보이게 두고 1~2초 녹화 <button data-trial="calibration">녹화</button></li>
+          <li><b>중립 자세(체형 스케일링)</b> — 체커보드 치우고, 정면 보고 팔을 몸에서 약간 떼고 3~5초 서 있기 <button data-trial="neutral">녹화</button></li>
+          <li><b>동작 시행</b>
+            <div class="grid3">
+              <label>시행 이름 <input id="tName" placeholder="squat1"></label>
+              <label>동역학 동작 <select id="tMotion"></select></label>
+              <label>지표 분석 <select id="tAnalysis"><option value="auto">자동 (보행·STS 동작이면)</option><option value="gait">보행 지표</option><option value="sts">앉았다 일어서기 지표</option><option value="none">안 함</option></select></label>
+              <label>반복 번호(스쿼트·STS, 0부터) <input id="tRep" type="number" value="0"></label>
+              <label>구간 시작(s) <input id="tT0" type="number" step="0.01" placeholder="보행·점프"></label>
+              <label>구간 끝(s) <input id="tT1" type="number" step="0.01" placeholder="2초 이하 권장"></label>
+            </div>
+            <button data-trial="dynamic" class="primary">녹화</button>
+          </li>
+        </ol>
+        <div class="row"><button id="stopBtn" class="danger" hidden>■ 녹화 정지·업로드</button><span id="recInfo"></span></div>
+        <table id="trialTable" class="tbl"></table>
+      </div>
+    </div>
+
+    <div class="card" id="resultView" hidden>
+      <h2 id="rvTitle"></h2>
+      <div id="rvNotes"></div>
+      <div id="v3dBox" hidden>
+        <h3>3D 재생 <small class="muted">OpenSim 근골격 모델 · 드래그 회전 / 휠 확대 · 그래프를 누르면 그 시점으로 이동</small></h3>
+        <div id="viewer3d" class="viewer3d"></div>
+        <div class="row">
+          <button id="v3Play" class="primary">▶ 재생</button>
+          <input id="v3Slider" type="range" min="0" max="0" value="0" class="grow">
+          <span id="v3Time" class="muted">0.00 s</span>
+          <select id="v3Speed"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option></select>
+          <button data-view="front">정면</button><button data-view="side">측면</button><button data-view="top">위</button>
+          <label class="inline"><input type="checkbox" id="v3Follow"> 따라가기</label>
+          <label class="inline"><input type="checkbox" id="v3Lines"> 골격선</label>
+        </div>
+        <p id="v3Info" class="muted"></p>
+      </div>
+      <div id="actBox" hidden>
+        <h3 id="actTitle">동작 지표</h3>
+        <div id="actTable"></div>
+        <div id="actCurveBox">
+          <div class="row"><label class="inline">관절 <select id="actCoord"></select></label><span class="muted">보행 주기 정규화(0–100%) 평균 ± 표준편차 · 분홍=오른쪽, 하늘=왼쪽</span></div>
+          <canvas id="actChart" class="chart"></canvas>
+        </div>
+      </div>
+      <div class="row" id="actRun"><select id="actKind"><option value="gait">보행 지표</option><option value="sts">앉았다 일어서기 지표</option></select><button id="actRunBtn">지표 분석 실행</button></div>
+      <h3>관절각 (OpenSim 역기구학)</h3>
+      <div id="kinChips" class="chips"></div>
+      <canvas id="kinChart" class="chart"></canvas>
+      <div id="kinBox">
+        <h3>동역학 (근육 구동 시뮬레이션)</h3>
+        <div class="row"><select id="kinSeries"></select></div>
+        <div id="dynChips" class="chips"></div>
+        <canvas id="dynChart" class="chart"></canvas>
+      </div>
+      <div id="calImgs" class="imgs"></div>
+      <h3>파일</h3>
+      <ul id="rvFiles" class="files"></ul>
+    </div>
+  </section>
+</main>
+<script type="importmap">{"imports": {"three": "./vendor/three/three.module.min.js", "three/addons/": "./vendor/three/addons/"}}</script>
+<script type="module" src="viewer.js"></script>
+<script src="vendor/qrcode.js"></script>
+<script src="app.js"></script>
+<script src="validation.js"></script>
+</body>
+</html>

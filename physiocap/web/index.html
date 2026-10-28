@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0d1117">
+<meta name="description" content="스마트폰 한 대로 하는 온디바이스 동작분석 — 관절각, 반복 분할, 보행·균형 지표, OpenSim TRC 내보내기">
+<title>PhysioCap 동작분석</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- 홈 -->
+  <section id="home" class="screen active" aria-label="홈">
+    <header class="top">
+      <div class="brand">
+        <img src="icons/icon.svg" alt="" width="36" height="36">
+        <div><h1>PhysioCap</h1><p>스마트폰 한 대 · 온디바이스 동작분석</p></div>
+      </div>
+      <button class="icon-btn" id="btnSettings" aria-label="설정">⚙</button>
+    </header>
+
+    <h2 class="sec">대상자</h2>
+    <div class="subject-bar">
+      <select id="subjectSel" class="field" aria-label="대상자 선택"></select>
+      <button class="icon-btn" id="btnSubjEdit" aria-label="대상자 수정">✎</button>
+      <button class="icon-btn" id="btnSubjAdd" aria-label="대상자 추가">＋</button>
+    </div>
+    <p class="hint" id="subjectHint"></p>
+
+    <h2 class="sec">검사 선택</h2>
+    <div id="protocolGrid" class="grid"></div>
+
+    <div class="row gap">
+      <label class="btn ghost wide" for="fileInput">🎞 촬영된 영상 분석</label>
+      <input type="file" id="fileInput" accept="video/*" hidden>
+    </div>
+    <p class="hint">영상을 고르면 검사 종류를 묻습니다. 갤럭시 '슬로우 모션' 영상도 됩니다.</p>
+    <div class="row gap"><button class="btn wide" id="btnLab" hidden>🧪 연구실 모드 — 갤럭시 2대 + GPU PC (OpenCap 파이프라인)</button></div>
+
+    <div class="sec-row">
+      <h2 class="sec">기록</h2>
+      <select id="histFilter" class="field small" aria-label="기록 범위">
+        <option value="cur">선택한 대상자</option>
+        <option value="all">전체</option>
+      </select>
+    </div>
+    <div id="history" class="list"><p class="empty">아직 기록이 없습니다.</p></div>
+
+    <h2 class="sec">백업</h2>
+    <div class="row gap backup-row">
+      <button class="btn wide" id="btnBackup">💾 백업 파일 저장</button>
+      <label class="btn wide" for="backupInput">📂 백업 불러오기</label>
+      <input type="file" id="backupInput" accept=".gz,.json,application/json,application/gzip" hidden>
+    </div>
+    <p class="hint" id="backupHint"></p>
+
+    <details class="about">
+      <summary>이 앱의 원리와 한계</summary>
+      <p>MediaPipe Pose Landmarker가 매 프레임 33개 신체 기준점의 2D 위치와 3D 추정 좌표를 계산하고, 이를 바탕으로 관절각을 구합니다. 모든 계산은 폰 안에서 이뤄지며 영상이 서버로 나가지 않습니다.</p>
+      <p>OpenCap(Stanford)은 iPhone 2대 이상과 클라우드 서버에서 OpenSim 역기구학·근골격 시뮬레이션을 돌려 관절 모멘트·근력까지 추정합니다. 이 앱은 폰 한 대로 즉시 결과를 내는 대신 근력·관절 모멘트는 계산하지 않으며, 단안 카메라 특성상 깊이 방향(카메라 쪽) 움직임과 회전 각도의 정확도가 낮습니다. 대신 TRC 파일을 내보내 PC의 OpenSim에서 역기구학을 이어서 할 수 있습니다.</p>
+      <p>측정값은 교육·선별용 추정치이며 임상 진단을 대신하지 않습니다.</p>
+    </details>
+  </section>
+
+  <!-- 촬영 -->
+  <section id="capture" class="screen" aria-label="촬영">
+    <div class="stage">
+      <canvas id="liveCanvas"></canvas>
+      <video id="liveVideo" playsinline muted></video>
+      <div class="hud-top">
+        <button class="icon-btn" id="btnBack" aria-label="뒤로">←</button>
+        <div class="hud-title"><b id="capTitle"></b><span id="capHint"></span></div>
+        <span class="pill" id="capStatus"></span>
+      </div>
+      <div class="chips" id="liveChips"></div>
+      <div class="counter" id="liveCounter" hidden></div>
+      <div class="countdown" id="countdown" hidden></div>
+      <div class="hud-bottom">
+        <select id="stsMode" class="pill-select" hidden aria-label="종료 조건">
+          <option value="manual">수동 종료</option>
+          <option value="five">5회 후 자동 종료</option>
+          <option value="thirty">30초 후 자동 종료</option>
+        </select>
+        <div class="controls">
+          <button class="round" id="btnFlip" aria-label="카메라 전환">⟲</button>
+          <button class="rec" id="btnRec" aria-label="기록 시작"><span></span></button>
+          <span class="timer" id="recTimer">0.0s</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 처리 중 -->
+  <section id="processing" class="screen" aria-label="분석 중">
+    <div class="proc">
+      <canvas id="procCanvas"></canvas>
+      <h2 id="procTitle">영상 분석 중…</h2>
+      <div class="bar"><i id="procBar"></i></div>
+      <p id="procText" class="hint"></p>
+      <button class="btn ghost" id="btnCancel">취소</button>
+    </div>
+  </section>
+
+  <!-- 결과 -->
+  <section id="results" class="screen" aria-label="결과">
+    <header class="top">
+      <button class="icon-btn" id="btnHome" aria-label="홈으로">←</button>
+      <div class="grow"><h1 id="resTitle">결과</h1><p id="resSub"></p></div>
+    </header>
+    <div class="replay" id="replayBox">
+      <video id="replayVideo" playsinline controls muted></video>
+      <canvas id="replayCanvas"></canvas>
+    </div>
+    <div id="resNotes" class="notes"></div>
+    <div id="resMetrics" class="metrics"></div>
+    <h2 class="sec">관절각 그래프 <small>그래프를 누르면 해당 시점으로 이동</small></h2>
+    <div id="seriesChips" class="chips static"></div>
+    <canvas id="chart" class="chart"></canvas>
+    <div id="repTableBox"></div>
+    <h2 class="sec">관절 가동범위 요약</h2>
+    <div id="romTable"></div>
+    <h2 class="sec">내보내기</h2>
+    <div class="exports">
+      <button class="btn" data-exp="csv">각도 CSV</button>
+      <button class="btn" data-exp="lm">좌표 CSV</button>
+      <button class="btn" data-exp="trc">OpenSim TRC</button>
+      <button class="btn" data-exp="mot">OpenSim MOT (IK)</button>
+      <button class="btn" data-exp="json">결과 JSON</button>
+      <button class="btn" data-exp="video" id="expVideo">분석 영상</button>
+      <button class="btn" data-exp="text">요약 공유</button>
+    </div>
+  </section>
+
+  <!-- 설정 -->
+  <dialog id="settingsDlg">
+    <form method="dialog" class="settings">
+      <h2>설정</h2>
+      <label>포즈 모델
+        <select name="model">
+          <option value="lite">Lite — 가장 빠름</option>
+          <option value="full">Full — 균형 (권장)</option>
+          <option value="heavy">Heavy — 가장 정밀 (첫 사용 시 다운로드 30MB)</option>
+        </select>
+      </label>
+      <label>키 (cm, 대상자 미지정일 때만 사용 · 비우면 자동)
+        <input name="height" type="number" min="80" max="230" step="1" inputmode="numeric" placeholder="예: 170">
+      </label>
+      <label>기록 전 카운트다운 (초)
+        <select name="countdown"><option>0</option><option>3</option><option>5</option><option>10</option></select>
+      </label>
+      <label>영상 분석 프레임률
+        <select name="fps"><option value="15">15 fps (빠름)</option><option value="30">30 fps</option><option value="60">60 fps (빠른 동작)</option></select>
+      </label>
+      <label>필터 차단주파수 (Hz)
+        <select name="cutoff"><option value="4">4</option><option value="6">6 (보행·일반)</option><option value="8">8</option><option value="12">12 (빠른 동작)</option></select>
+      </label>
+      <label class="check"><input type="checkbox" name="voice"> 음성 안내 (시작·반복 횟수)</label>
+      <menu><button value="cancel" class="btn ghost" formnovalidate>취소</button><button value="ok" class="btn primary">저장</button></menu>
+    </form>
+  </dialog>
+
+  <!-- 영상 분석: 검사 종류 선택 -->
+  <dialog id="fileDlg">
+    <form method="dialog" class="settings">
+      <h2>영상 분석</h2>
+      <p class="hint file-name" id="fileDlgName"></p>
+      <fieldset class="opts" id="fileProtoOpts">
+        <legend>검사 종류</legend>
+      </fieldset>
+      <p class="hint" id="fileDlgSubject"></p>
+      <menu>
+        <button value="cancel" class="btn ghost" formnovalidate>취소</button>
+        <button value="ok" class="btn primary">분석 시작</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <!-- 대상자 추가·수정 -->
+  <dialog id="subjectDlg">
+    <form method="dialog" class="settings">
+      <h2 id="subjDlgTitle">대상자 추가</h2>
+      <label>대상자 코드
+        <input name="code" type="text" maxlength="20" autocomplete="off" placeholder="예: S001">
+      </label>
+      <label>키 (cm, 거리·흔들림 축척 보정 · 비우면 자동)
+        <input name="height" type="number" min="80" max="230" step="1" inputmode="numeric" placeholder="예: 170">
+      </label>
+      <p class="hint">이름·생년월일 대신 코드를 쓰세요. 기록은 이 기기 안에만 저장됩니다.</p>
+      <p class="err" id="subjErr" role="alert"></p>
+      <menu>
+        <button value="delete" class="btn ghost danger" id="btnSubjDel" formnovalidate>삭제</button>
+        <button value="cancel" class="btn ghost" formnovalidate>취소</button>
+        <button value="ok" class="btn primary">저장</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <div id="toast" role="status" aria-live="polite"></div>
+</div>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

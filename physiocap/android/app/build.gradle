@@ -1,0 +1,43 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'kr.physiocap.app'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'kr.physiocap.app'
+        minSdk 26
+        targetSdk 34
+        versionCode 1
+        versionName '0.1.0'
+    }
+
+    // 웹 앱(../../web)을 그대로 APK assets 로 묶는다. web/vendor 는 scripts/fetch-assets.sh 로 먼저 받아 둘 것.
+    sourceSets {
+        main.assets.srcDirs = ['../../web']
+    }
+
+    androidResources {
+        // 모델·wasm 은 압축하지 않아야 빠르게 읽힌다
+        noCompress 'task', 'wasm'
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation 'androidx.webkit:webkit:1.12.1'
+    // 연구실 모드 QR 스캔 (Apache 2.0)
+    implementation 'com.journeyapps:zxing-android-embedded:4.3.0'
+}
