@@ -24,6 +24,14 @@
       <button class="icon-btn" id="btnSettings" aria-label="설정">⚙</button>
     </header>
 
+    <h2 class="sec">대상자</h2>
+    <div class="subject-bar">
+      <select id="subjectSel" class="field" aria-label="대상자 선택"></select>
+      <button class="icon-btn" id="btnSubjEdit" aria-label="대상자 수정">✎</button>
+      <button class="icon-btn" id="btnSubjAdd" aria-label="대상자 추가">＋</button>
+    </div>
+    <p class="hint" id="subjectHint"></p>
+
     <h2 class="sec">검사 선택</h2>
     <div id="protocolGrid" class="grid"></div>
 
@@ -31,11 +39,25 @@
       <label class="btn ghost wide" for="fileInput">🎞 촬영된 영상 분석</label>
       <input type="file" id="fileInput" accept="video/*" hidden>
     </div>
-    <p class="hint">영상 분석은 위에서 고른 검사 기준으로 진행됩니다. 갤럭시 '슬로우 모션' 영상도 됩니다.</p>
+    <p class="hint">영상을 고르면 검사 종류를 묻습니다. 갤럭시 '슬로우 모션' 영상도 됩니다.</p>
     <div class="row gap"><button class="btn wide" id="btnLab" hidden>🧪 연구실 모드 — 갤럭시 2대 + GPU PC (OpenCap 파이프라인)</button></div>
 
-    <h2 class="sec">기록</h2>
+    <div class="sec-row">
+      <h2 class="sec">기록</h2>
+      <select id="histFilter" class="field small" aria-label="기록 범위">
+        <option value="cur">선택한 대상자</option>
+        <option value="all">전체</option>
+      </select>
+    </div>
     <div id="history" class="list"><p class="empty">아직 기록이 없습니다.</p></div>
+
+    <h2 class="sec">백업</h2>
+    <div class="row gap backup-row">
+      <button class="btn wide" id="btnBackup">💾 백업 파일 저장</button>
+      <label class="btn wide" for="backupInput">📂 백업 불러오기</label>
+      <input type="file" id="backupInput" accept=".gz,.json,application/json,application/gzip" hidden>
+    </div>
+    <p class="hint" id="backupHint"></p>
 
     <details class="about">
       <summary>이 앱의 원리와 한계</summary>
@@ -125,7 +147,7 @@
           <option value="heavy">Heavy — 가장 정밀 (첫 사용 시 다운로드 30MB)</option>
         </select>
       </label>
-      <label>키 (cm, 거리·흔들림 축척 보정 · 비우면 자동)
+      <label>키 (cm, 대상자 미지정일 때만 사용 · 비우면 자동)
         <input name="height" type="number" min="80" max="230" step="1" inputmode="numeric" placeholder="예: 170">
       </label>
       <label>기록 전 카운트다운 (초)
@@ -138,7 +160,43 @@
         <select name="cutoff"><option value="4">4</option><option value="6">6 (보행·일반)</option><option value="8">8</option><option value="12">12 (빠른 동작)</option></select>
       </label>
       <label class="check"><input type="checkbox" name="voice"> 음성 안내 (시작·반복 횟수)</label>
-      <menu><button value="cancel" class="btn ghost">취소</button><button value="ok" class="btn primary">저장</button></menu>
+      <menu><button value="cancel" class="btn ghost" formnovalidate>취소</button><button value="ok" class="btn primary">저장</button></menu>
+    </form>
+  </dialog>
+
+  <!-- 영상 분석: 검사 종류 선택 -->
+  <dialog id="fileDlg">
+    <form method="dialog" class="settings">
+      <h2>영상 분석</h2>
+      <p class="hint file-name" id="fileDlgName"></p>
+      <fieldset class="opts" id="fileProtoOpts">
+        <legend>검사 종류</legend>
+      </fieldset>
+      <p class="hint" id="fileDlgSubject"></p>
+      <menu>
+        <button value="cancel" class="btn ghost" formnovalidate>취소</button>
+        <button value="ok" class="btn primary">분석 시작</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <!-- 대상자 추가·수정 -->
+  <dialog id="subjectDlg">
+    <form method="dialog" class="settings">
+      <h2 id="subjDlgTitle">대상자 추가</h2>
+      <label>대상자 코드
+        <input name="code" type="text" maxlength="20" autocomplete="off" placeholder="예: S001">
+      </label>
+      <label>키 (cm, 거리·흔들림 축척 보정 · 비우면 자동)
+        <input name="height" type="number" min="80" max="230" step="1" inputmode="numeric" placeholder="예: 170">
+      </label>
+      <p class="hint">이름·생년월일 대신 코드를 쓰세요. 기록은 이 기기 안에만 저장됩니다.</p>
+      <p class="err" id="subjErr" role="alert"></p>
+      <menu>
+        <button value="delete" class="btn ghost danger" id="btnSubjDel" formnovalidate>삭제</button>
+        <button value="cancel" class="btn ghost" formnovalidate>취소</button>
+        <button value="ok" class="btn primary">저장</button>
+      </menu>
     </form>
   </dialog>
 

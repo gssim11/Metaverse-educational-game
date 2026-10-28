@@ -2,13 +2,15 @@ import { ANGLES, PROTOCOLS, LM, computeAngles, OneEuro, analyze, toCSV, landmark
 import { toMOT } from './ik.js';
 import { createPose, toFrame } from './pose.js';
 import { LineChart, PALETTE } from './chart.js';
-import { saveSession, listSessions, getSession, deleteSession } from './store.js';
+import { saveSession, listSessions, getSession, deleteSession, listSubjects, saveSubject, deleteSubject, exportAll, importMany, listSessionIds } from './store.js';
+import { buildBackup, encodeBackup, decodeBackup, planMerge } from './backup.js';
+import { normalizeCode, validateSubject, effectiveHeight, previousSession, filterSessions, countBySubject, fileSafe } from './subjects.js';
 
 const $ = (s) => document.querySelector(s);
 const isAndroidApp = !!window.AndroidBridge;
 
 // ---------- 설정 ----------
-const DEFAULTS = { model: 'full', height: '', countdown: '3', fps: '30', cutoff: '6', voice: true, protocol: 'squat' };
+const DEFAULTS = { model: 'full', height: '', countdown: '3', fps: '30', cutoff: '6', voice: true, protocol: 'squat', subjectId: '', histFilter: 'cur' };
 function loadSettings() {
   try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem('physiocap.settings') || '{}') }; } catch { return { ...DEFAULTS }; }
 }
@@ -16,7 +18,13 @@ function storeSettings() {
   try { localStorage.setItem('physiocap.settings', JSON.stringify(settings)); } catch { /* 저장 불가 환경 */ }
 }
 const settings = loadSettings();
-const heightM = () => (Number(settings.height) > 0 ? Number(settings.height) / 100 : 0);
+// ---------- 대상자 ----------
+let subjects = [];
+const currentSubject = () => subjects.find((s) => s.id === settings.subjectId) || null;
+const subjectCodeOf = (id, fallback = '') => subjects.find((s) => s.id === id)?.code || fallback;
+// 대상자를 고르면 그 대상자의 키만, 미지정이면 설정의 키를 쓴다
+const currentHeight = () => effectiveHeight(currentSubject(), settings.height);
+const heightM = () => (Number(currentHeight()) > 0 ? Number(currentHeight()) / 100 : 0);
 const analyzeOpts = () => ({ fs: 30, cutoff: Number(settings.cutoff) || 6, heightM: heightM() });
 
 const ICONS = { squat: '🏋', sts: '🪑', gait: '🚶', balance: '🦩', rom: '📐', free: '✳' };
@@ -163,7 +171,10 @@ function drawSkeleton(ctx, lm, w, h, { angles = null, scale = 1 } = {}) {
 }
 
 // ---------- 홈 ----------
-function renderHome() {
+async function renderHome() {
+  subjects = await listSubjects();
+  if (settings.subjectId && !currentSubject()) { settings.subjectId = ''; storeSettings(); }
+  renderSubjectBar();
   const grid = $('#protocolGrid');
   grid.innerHTML = '';
   for (const [key, p] of Object.entries(PROTOCOLS)) {
@@ -176,17 +187,49 @@ function renderHome() {
   renderHistory();
 }
 
+function renderSubjectBar() {
+  const sel = $('#subjectSel');
+  sel.innerHTML = '<option value="">대상자 미지정</option>' +
+    subjects.map((s) => `<option value="${esc(s.id)}">${esc(s.code)}${Number(s.height) > 0 ? ` · ${esc(s.height)} cm` : ''}</option>`).join('');
+  sel.value = settings.subjectId || '';
+  $('#btnSubjEdit').disabled = !currentSubject();
+  $('#histFilter').value = settings.histFilter === 'all' ? 'all' : 'cur';
+}
+
+function renderSubjectHint(all) {
+  const s = currentSubject();
+  const n = countBySubject(all).get(s?.id || null) || 0;
+  $('#subjectHint').textContent = s
+    ? `키 ${Number(s.height) > 0 ? s.height + ' cm' : '미입력(자동 축척)'} · 기록 ${n}개 · 이전 기록 비교는 이 대상자 기록끼리만 합니다.`
+    : `대상자 미지정 · 키는 설정값${Number(settings.height) > 0 ? `(${settings.height} cm)` : '(미입력)'}을 씁니다. 여러 사람을 측정하면 대상자를 추가하세요.`;
+}
+
+function renderBackupHint(all) {
+  const last = Number(settings.lastBackup) || 0;
+  const since = all.filter((s) => s.date > last).length;
+  $('#backupHint').textContent = (last
+    ? `마지막 백업 ${new Date(last).toLocaleString('ko-KR')}${since ? ` · 그 뒤 새 기록 ${since}개` : ''}. `
+    : (all.length ? '아직 백업하지 않았습니다. ' : '')) +
+    '앱을 지우거나 브라우저 데이터를 지우면 기록도 사라집니다. 백업 파일에는 측정 좌표가 들어 있으니 안전한 곳에 보관하세요.';
+}
+
 async function renderHistory() {
   const box = $('#history');
-  const items = await listSessions();
-  if (!items.length) { box.innerHTML = '<p class="empty">아직 기록이 없습니다.</p>'; return; }
+  const all = await listSessions();
+  renderSubjectHint(all);
+  renderBackupHint(all);
+  const showAll = settings.histFilter === 'all';
+  const items = filterSessions(all, showAll ? 'all' : settings.subjectId);
+  if (!items.length) { box.innerHTML = `<p class="empty">${all.length ? '이 대상자의 기록이 없습니다.' : '아직 기록이 없습니다.'}</p>`; return; }
   box.innerHTML = '';
   for (const s of items.slice(0, 50)) {
     const d = new Date(s.date);
     const key = s.result?.metrics?.[0];
+    const code = s.subjectId ? subjectCodeOf(s.subjectId, s.subjectCode || '삭제된 대상자') : '미지정';
+    const tag = showAll ? `<i class="tag">${esc(code)}</i>` : '';
     const el = document.createElement('div');
     el.className = 'item';
-    el.innerHTML = `<div class="grow"><b>${esc(s.result?.protocolName || s.protocol)}</b><span>${d.toLocaleString('ko-KR')} · ${esc(s.result?.duration ?? '')}s${key ? ' · ' + esc(key.label) + ' ' + esc(fmt(key.value)) + esc(key.unit || '') : ''}</span></div><button aria-label="삭제">🗑</button>`;
+    el.innerHTML = `<div class="grow"><b>${tag}${esc(s.result?.protocolName || s.protocol)}</b><span>${d.toLocaleString('ko-KR')} · ${esc(s.result?.duration ?? '')}s${key ? ' · ' + esc(key.label) + ' ' + esc(fmt(key.value)) + esc(key.unit || '') : ''}</span></div><button aria-label="삭제">🗑</button>`;
     el.querySelector('.grow').addEventListener('click', () => openSession(s.id));
     el.querySelector('button').addEventListener('click', async () => {
       if (!confirm('이 기록을 삭제할까요?')) return;
@@ -399,8 +442,36 @@ async function stopRecording(goResults) {
 
 // ---------- 영상 파일 분석 ----------
 let cancelFile = false;
-async function analyzeFile(file) {
-  const protocol = settings.protocol;
+// 영상을 고른 뒤 검사 종류를 묻는다 (마지막으로 쓴 검사가 기본 선택)
+function openFileDialog(file) {
+  const dlg = $('#fileDlg');
+  const f = dlg.querySelector('form');
+  const box = $('#fileProtoOpts');
+  box.querySelectorAll('label').forEach((el) => el.remove());
+  const cur = PROTOCOLS[settings.protocol] ? settings.protocol : 'squat';
+  for (const [key, p] of Object.entries(PROTOCOLS)) {
+    const el = document.createElement('label');
+    el.className = 'opt';
+    el.innerHTML = `<input type="radio" name="protocol" value="${esc(key)}"${key === cur ? ' checked' : ''}><span class="ico">${ICONS[key]}</span><span><b>${esc(p.name)}</b><small>${esc(p.view)} 촬영</small></span>`;
+    box.appendChild(el);
+  }
+  $('#fileDlgName').textContent = file.name;
+  const s = currentSubject();
+  $('#fileDlgSubject').textContent = s ? `대상자 ${s.code}의 기록으로 저장합니다.` : '대상자 미지정으로 저장합니다.';
+  f.onsubmit = (e) => {
+    e.preventDefault();
+    const act = e.submitter?.value;
+    dlg.close();
+    if (act !== 'ok') return;
+    const protocol = f.querySelector('input[name=protocol]:checked')?.value || cur;
+    settings.protocol = protocol; storeSettings();
+    analyzeFile(file, protocol);
+  };
+  dlg.showModal();
+  box.querySelector('input:checked')?.focus();
+}
+
+async function analyzeFile(file, protocol = settings.protocol) {
   cancelFile = false;
   show('processing');
   $('#procTitle').textContent = `영상 분석 중 — ${PROTOCOLS[protocol].name}`;
@@ -464,7 +535,9 @@ async function finishSession({ frames, protocol, source, videoBlob = null, video
   const session = {
     id: 's' + Date.now().toString(36),
     date: Date.now(), protocol, source, fileName,
-    settings: { model: settings.model, height: settings.height, cutoff: settings.cutoff, fps: settings.fps },
+    subjectId: currentSubject()?.id || null,
+    subjectCode: currentSubject()?.code || '',
+    settings: { model: settings.model, height: currentHeight(), cutoff: settings.cutoff, fps: settings.fps },
     frames,
   };
   showAnalyzing();
@@ -484,10 +557,11 @@ async function openSession(id) {
   showResults(s, analysis, { videoURL: null, overlay: false });
 }
 
+// 같은 대상자·같은 검사의 직전 기록 (다른 사람 기록과 비교하지 않음)
 async function previousOf(session) {
-  const all = await listSessions();
-  return all.find((s) => s.protocol === session.protocol && s.date < session.date) || null;
+  return previousSession(await listSessions(), session);
 }
+const sessionCode = (s) => (s.subjectId ? subjectCodeOf(s.subjectId, s.subjectCode || '삭제된 대상자') : '');
 
 async function showResults(session, analysis, { videoURL, videoBlob = null, overlay }) {
   if (view.videoURL && view.videoURL !== videoURL) URL.revokeObjectURL(view.videoURL);
@@ -495,7 +569,8 @@ async function showResults(session, analysis, { videoURL, videoBlob = null, over
   const r = analysis.result;
   show('results');
   $('#resTitle').textContent = r.protocolName;
-  $('#resSub').textContent = `${new Date(session.date).toLocaleString('ko-KR')} · ${r.duration}s · 신체 검출 ${r.detectionRate}%`;
+  const code = sessionCode(session);
+  $('#resSub').textContent = `${code ? code + ' · ' : ''}${new Date(session.date).toLocaleString('ko-KR')} · ${r.duration}s · 신체 검출 ${r.detectionRate}%`;
 
   // 이전 기록 대비
   const prev = await previousOf(session);
@@ -650,12 +725,16 @@ function nearestFrame(frames, t) {
 function stamp() {
   const d = new Date(view.session.date);
   const p = (n) => String(n).padStart(2, '0');
-  return `${view.session.protocol}_${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}`;
+  const code = fileSafe(sessionCode(view.session));
+  return `${code ? code + '_' : ''}${view.session.protocol}_${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}`;
 }
 
 function summaryText() {
   const r = view.analysis.result;
-  const lines = [`[PhysioCap] ${r.protocolName} — ${new Date(view.session.date).toLocaleString('ko-KR')}`, `기록 ${r.duration}s · 검출률 ${r.detectionRate}%`];
+  const code = sessionCode(view.session);
+  const lines = [`[PhysioCap] ${r.protocolName} — ${new Date(view.session.date).toLocaleString('ko-KR')}`];
+  if (code) lines.push(`대상자 ${code}`);
+  lines.push(`기록 ${r.duration}s · 검출률 ${r.detectionRate}%`);
   for (const m of r.metrics) lines.push(`• ${m.label}: ${fmt(m.value)}${m.unit}`);
   for (const n of r.notes) lines.push(`※ ${n}`);
   lines.push('※ 단일 카메라 기반 추정치이며 임상 진단을 대신하지 않습니다.');
@@ -671,7 +750,7 @@ async function exportAs(kind) {
     case 'lm': return saveFile(base + '_landmarks.csv', 'text/csv', landmarksCSV(frames));
     case 'mot': return saveFile(base + '_ik.mot', 'text/plain', toMOT(S.t, S.series, base + '_ik.mot'));
     case 'trc': return saveFile(base + '.trc', 'text/plain', toTRC(frames, { fs: 30, name: base + '.trc', heightM: Number(view.session.settings?.height) > 0 ? Number(view.session.settings.height) / 100 : 0 }));
-    case 'json': return saveFile(base + '.json', 'application/json', JSON.stringify({ app: 'PhysioCap', ...view.analysis.result, settings: view.session.settings }, null, 2));
+    case 'json': return saveFile(base + '.json', 'application/json', JSON.stringify({ app: 'PhysioCap', subject: sessionCode(view.session) || null, ...view.analysis.result, settings: view.session.settings }, null, 2));
     case 'video': if (view.videoBlob) return saveFile(base + (view.videoBlob.type.includes('mp4') ? '.mp4' : '.webm'), view.videoBlob.type, view.videoBlob); return;
     case 'text': {
       const txt = summaryText();
@@ -725,8 +804,115 @@ function openSettings() {
   };
 }
 
+// ---------- 백업·복원 ----------
+async function backupAll() {
+  const btn = $('#btnBackup');
+  btn.disabled = true;
+  try {
+    const data = await exportAll();
+    if (!data.sessions.length && !data.subjects.length) { toast('백업할 기록이 없습니다.'); return; }
+    const now = Date.now();
+    const { blob, ext, mime } = await encodeBackup(buildBackup({ ...data, now }));
+    const d = new Date(now), p = (n) => String(n).padStart(2, '0');
+    await saveFile(`physiocap_backup_${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${ext}`, mime, blob);
+    settings.lastBackup = now; storeSettings();
+    renderHistory();
+  } catch (e) {
+    console.error(e);
+    toast('백업 실패: ' + (e.message || e), 4000);
+  } finally { btn.disabled = false; }
+}
+
+async function restoreFrom(file) {
+  try {
+    const backup = await decodeBackup(file);
+    const plan = planMerge({ subjects: await listSubjects(), sessionIds: await listSessionIds() }, backup);
+    const { addSubjects: su, addSessions: se, matchedSubjects: ms, skippedSessions: sk } = plan;
+    if (!su.length && !se.length) {
+      toast(`새로 추가할 기록이 없습니다${sk ? `(이미 있는 기록 ${sk}개)` : ''}.`, 4000);
+      return;
+    }
+    const when = backup.exported ? new Date(backup.exported).toLocaleString('ko-KR') : '날짜 모름';
+    const lines = [
+      `${when}에 만든 백업입니다.`,
+      `· 대상자 새로 ${su.length}명${ms ? `, 기존 대상자와 같은 사람 ${ms}명(코드 기준)` : ''}`,
+      `· 기록 ${se.length}개 추가${sk ? `, 이미 있는 기록 ${sk}개는 건너뜀` : ''}`,
+      '기기에 있는 기록은 바뀌지 않습니다. 불러올까요?',
+    ];
+    if (!confirm(lines.join('\n'))) return;
+    await importMany(su, se);
+    toast(`불러오기 완료: 대상자 ${su.length}명, 기록 ${se.length}개`, 4000);
+    renderHome();
+  } catch (e) {
+    console.error(e);
+    toast('불러오기 실패: ' + (e.message || e), 5000);
+  }
+}
+
+// ---------- 대상자 대화상자 ----------
+function openSubjectDialog(subject = null) {
+  const dlg = $('#subjectDlg');
+  const f = dlg.querySelector('form');
+  $('#subjDlgTitle').textContent = subject ? '대상자 수정' : '대상자 추가';
+  $('#btnSubjDel').hidden = !subject;
+  $('#subjErr').textContent = '';
+  f.code.value = subject?.code || '';
+  f.height.value = subject?.height || '';
+  let busy = false;
+  // 저장·삭제는 제출 시점에 바로 처리한다(close 이벤트는 늦게 와서 다음 입력과 섞일 수 있음)
+  f.onsubmit = async (e) => {
+    e.preventDefault();
+    const act = e.submitter?.value;
+    if (act === 'cancel') { dlg.close(); return; }
+    if (busy) return;
+    if (act === 'ok') {
+      const all = await listSubjects();
+      const err = validateSubject({ id: subject?.id || null, code: f.code.value, height: f.height.value }, all);
+      if (err) { $('#subjErr').textContent = err; f.code.focus(); return; }
+      const s = {
+        id: subject?.id || 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+        code: normalizeCode(f.code.value),
+        height: Number(f.height.value) > 0 ? String(Math.round(Number(f.height.value))) : '',
+        created: subject?.created || Date.now(),
+      };
+      busy = true;
+      const ok = await saveSubject(s);
+      busy = false;
+      if (!ok) { $('#subjErr').textContent = '대상자를 저장하지 못했습니다.'; return; }
+      settings.subjectId = s.id; storeSettings();
+      dlg.close();
+      toast(subject ? '대상자를 수정했습니다.' : `대상자 ${s.code}을(를) 추가했습니다.`);
+    } else if (act === 'delete' && subject) {
+      if (!confirm(`대상자 ${subject.code}을(를) 삭제할까요? 측정 기록은 지워지지 않고 '전체' 목록에 남습니다.`)) return;
+      busy = true;
+      await deleteSubject(subject.id);
+      busy = false;
+      if (settings.subjectId === subject.id) { settings.subjectId = ''; storeSettings(); }
+      dlg.close();
+      toast('대상자를 삭제했습니다.');
+    } else return;
+    await renderHome();
+  };
+  dlg.showModal();
+  if (!subject) f.code.focus();
+}
+
 // ---------- 이벤트 연결 ----------
 $('#btnSettings').addEventListener('click', openSettings);
+$('#btnSubjAdd').addEventListener('click', () => openSubjectDialog());
+$('#btnSubjEdit').addEventListener('click', () => { const s = currentSubject(); if (s) openSubjectDialog(s); });
+$('#subjectSel').addEventListener('change', (e) => {
+  settings.subjectId = e.target.value; storeSettings();
+  $('#btnSubjEdit').disabled = !currentSubject();
+  renderHistory();
+});
+$('#btnBackup').addEventListener('click', backupAll);
+$('#backupInput').addEventListener('change', (e) => {
+  const f = e.target.files?.[0];
+  e.target.value = '';
+  if (f) restoreFrom(f);
+});
+$('#histFilter').addEventListener('change', (e) => { settings.histFilter = e.target.value; storeSettings(); renderHistory(); });
 if (window.AndroidBridge?.openLab) {
   $('#btnLab').hidden = false;
   $('#btnLab').addEventListener('click', () => window.AndroidBridge.openLab());
@@ -747,7 +933,7 @@ $('#btnCancel').addEventListener('click', () => { cancelFile = true; });
 $('#fileInput').addEventListener('change', (e) => {
   const f = e.target.files?.[0];
   e.target.value = '';
-  if (f) analyzeFile(f);
+  if (f) openFileDialog(f);
 });
 document.querySelectorAll('[data-exp]').forEach((b) => b.addEventListener('click', () => exportAs(b.dataset.exp).catch((e) => toast('내보내기 실패: ' + e.message))));
 document.addEventListener('visibilitychange', () => {

@@ -1,8 +1,8 @@
 // 오프라인 캐시 — 첫 접속 때 앱 셸 + MediaPipe 런타임 + 포즈 모델(lite/full)을 모두 받아 둔다.
-const CACHE = 'physiocap-v3';
+const CACHE = 'physiocap-v5';
 const CORE = [
   './', 'index.html', 'css/app.css', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png',
-  'js/app.js', 'js/analysis.js', 'js/ik.js', 'js/worker.js', 'js/pose.js', 'js/chart.js', 'js/store.js',
+  'js/app.js', 'js/analysis.js', 'js/ik.js', 'js/worker.js', 'js/pose.js', 'js/chart.js', 'js/store.js', 'js/subjects.js', 'js/backup.js',
   'vendor/tasks-vision/vision_bundle.mjs',
   'vendor/tasks-vision/wasm/vision_wasm_internal.js',
   'vendor/tasks-vision/wasm/vision_wasm_internal.wasm',

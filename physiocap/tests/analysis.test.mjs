@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   jointAngle, computeAngles, filtfilt, analyze, toTRC, toCSV, buildSeries, fppa, findPeaks, symmetryIndex, LANDMARK_NAMES,
 } from '../web/js/analysis.js';
+import { compactFrames, buildBackup, encodeBackup, decodeBackup } from '../web/js/backup.js';
 
 const D = Math.PI / 180;
 
@@ -266,4 +267,35 @@ test('가려진 관절은 값을 비움 (초깃값을 측정값처럼 내보내�
   assert.ok(S.series.kneeFlexR.every((v) => !Number.isFinite(v)));
   assert.ok(S.series.ankleDfL.every((v) => !Number.isFinite(v)));
   assert.ok(S.series.elbowFlexR.some(Number.isFinite));
+});
+
+test('백업: 좌표 반올림 후 다시 분석해도 관절각 차이가 매우 작다', async () => {
+  let seed = 7;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const frames = [];
+  for (let i = 0; i < 30 * 8; i++) {
+    const t = i / 30;
+    const ph = Math.max(0, Math.sin(2 * Math.PI * t / 2 - Math.PI / 2) * 0.5 + 0.5);
+    const k = 5 + 90 * ph;
+    frames.push(sideFrame(t, { kneeL: k, kneeR: k * 0.9, hipL: k * 0.8, hipR: k * 0.8, ankL: k * 0.2, noise: 0.01, rnd }));
+  }
+  const a = analyze(frames, 'squat');
+  // 실제 백업 파일을 거쳐(압축 → 해제) 복원한 프레임으로 다시 분석
+  const { blob } = await encodeBackup(buildBackup({ sessions: [{ id: 'x', date: 1, protocol: 'squat', frames }] }));
+  const restored = (await decodeBackup(blob)).sessions[0].frames;
+  assert.deepEqual(restored, compactFrames(frames));
+  const b = analyze(restored, 'squat');
+  let maxDiff = 0;
+  for (const key of Object.keys(a.series.series)) {
+    const ya = a.series.series[key], yb = b.series.series[key];
+    for (let i = 0; i < ya.length; i++) if (Number.isFinite(ya[i]) && Number.isFinite(yb[i])) maxDiff = Math.max(maxDiff, Math.abs(ya[i] - yb[i]));
+  }
+  assert.ok(maxDiff < 0.05, `최대 차이 ${maxDiff}°`);
+  // 결과 지표는 소수 첫째 자리로 반올림해 표시하므로 경계값에서 0.1 차이가 날 수 있다
+  a.result.metrics.forEach((m, i) => {
+    const v = b.result.metrics[i].value;
+    if (typeof m.value === 'number' && Number.isFinite(m.value)) assert.ok(Math.abs(v - m.value) <= 0.1 + 1e-9, `${m.label} ${m.value} → ${v}`);
+    else assert.deepEqual(v, m.value);
+  });
+  console.log(`# 백업 왕복 관절각 최대 차이 ${maxDiff.toExponential(2)}°`);
 });

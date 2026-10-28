@@ -120,11 +120,15 @@ public class MainActivity extends Activity {
             public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
                 if (fileCallback != null) fileCallback.onReceiveValue(null);
                 fileCallback = callback;
+                // 영상 입력은 영상만, 그 밖(백업 불러오기)은 모든 파일. gz·json의 MIME 형식은 기기마다 달라 */* 로 연다
+                boolean video = false;
+                String[] accept = params.getAcceptTypes();
+                if (accept != null) for (String a : accept) if (a != null && a.startsWith("video")) video = true;
                 Intent i = new Intent(Intent.ACTION_GET_CONTENT);
                 i.addCategory(Intent.CATEGORY_OPENABLE);
-                i.setType("video/*");
+                i.setType(video ? "video/*" : "*/*");
                 try {
-                    startActivityForResult(Intent.createChooser(i, "분석할 영상 선택"), REQ_FILE);
+                    startActivityForResult(Intent.createChooser(i, video ? "분석할 영상 선택" : "백업 파일 선택"), REQ_FILE);
                 } catch (Exception e) {
                     fileCallback = null;
                     return false;
